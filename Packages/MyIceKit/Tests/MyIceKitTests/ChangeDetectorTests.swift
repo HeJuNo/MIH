@@ -58,6 +58,7 @@ final class ChangeDetectorTests: XCTestCase {
 
     func testPlainTextNumericEntities() {
         XCTAssertEqual(PlainText.from(html: "Gr&#252;&#xDF;e<br>Team"), "Grüße\nTeam")
+        XCTAssertEqual(PlainText.from(html: "ausw&auml;rts &amp; Stra&szlig;e"), "auswärts & Straße")
     }
 
     func testPreferences() {

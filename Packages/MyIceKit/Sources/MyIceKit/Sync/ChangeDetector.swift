@@ -122,8 +122,12 @@ public enum PlainText {
         guard var s = html, !s.isEmpty else { return "" }
         s = s.replacingOccurrences(of: #"<br\s*/?>|</p>|</div>|</li>"#, with: "\n", options: [.regularExpression, .caseInsensitive])
         s = s.replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
-        let entities = ["&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'"]
-        for (k, v) in entities { s = s.replacingOccurrences(of: k, with: v) }
+        let entities = ["&nbsp;": " ", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39;": "'", "&apos;": "'",
+                        "&auml;": "ä", "&ouml;": "ö", "&uuml;": "ü", "&Auml;": "Ä", "&Ouml;": "Ö", "&Uuml;": "Ü",
+                        "&szlig;": "ß", "&eacute;": "é", "&egrave;": "è", "&agrave;": "à", "&ndash;": "–", "&mdash;": "—",
+                        "&bdquo;": "„", "&ldquo;": "“", "&rdquo;": "”", "&euro;": "€", "&amp;": "&"]
+        for (k, v) in entities where k != "&amp;" { s = s.replacingOccurrences(of: k, with: v) }
+        s = s.replacingOccurrences(of: "&amp;", with: "&")
         while let r = s.range(of: #"&#x?[0-9A-Fa-f]+;"#, options: .regularExpression) {
             let token = s[r].dropFirst(2).dropLast()
             let value = token.first == "x" ? UInt32(token.dropFirst(), radix: 16) : UInt32(token)
