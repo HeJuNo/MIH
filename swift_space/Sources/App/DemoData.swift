@@ -6,6 +6,17 @@ import MyIceKit
 enum DemoData {
     static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-demo") }
 
+    /// Screenshot deep links: `-demoDetail <index>`, `-demoSection people|messages`, `-demoStatus`, `-demoPast`.
+    static func value(after flag: String) -> String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+    static var detailIndex: Int? { value(after: "-demoDetail").flatMap(Int.init) }
+    static var section: String? { value(after: "-demoSection") }
+    static var opensStatus: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoStatus") }
+    static var opensPast: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoPast") }
+
     static let user = User(id: "1", email: "spieler@example.com",
                            info: decode(##"{"id_player":1,"id_club":"1","fname":"Alex","lname":"Muster","active_clubs":[{"club_id":"1","club_name":"EHC Musterstadt"},{"club_id":"2","club_name":"Eishockey Akademie"}]}"##),
                            hasNotifications: true)

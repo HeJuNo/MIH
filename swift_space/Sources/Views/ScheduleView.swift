@@ -28,9 +28,7 @@ struct ScheduleView: View {
                     EntrySections(entries: upcoming)
 
                     if !state.archive.isEmpty || state.isImportingHistory {
-                        NavigationLink {
-                            PastEventsView(filter: filter, club: club)
-                        } label: {
+                        NavigationLink(value: PastEventsView.route) {
                             PastLinkLabel(count: filtered(state.archive).count, importing: state.isImportingHistory)
                         }
                         .buttonStyle(.plain)
@@ -41,7 +39,13 @@ struct ScheduleView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Spiele & Trainings")
-            .navigationDestination(for: String.self) { key in EventDetailView(eventKey: key) }
+            .navigationDestination(for: String.self) { key in
+                if key == PastEventsView.route {
+                    PastEventsView(filter: filter, club: club)
+                } else {
+                    EventDetailView(eventKey: key)
+                }
+            }
             .refreshable { await state.refresh() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) { SyncStatusButton() }
@@ -161,6 +165,7 @@ struct NotifyMenuItem: View {
 
 /// History of the current season: local archive + web import.
 struct PastEventsView: View {
+    static let route = "__past__"
     @Environment(AppState.self) private var state
     @State var filter: KindFilter
     @State var club: String?

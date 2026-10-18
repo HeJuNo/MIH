@@ -5,7 +5,16 @@ import SwiftUI
 struct EventDetailView: View {
     @Environment(AppState.self) private var state
     let eventKey: String
-    @State private var section: Section = .overview
+    @State private var section: Section = {
+        #if DEBUG
+        switch DemoData.section {
+        case "people": return .people
+        case "messages": return .messages
+        default: break
+        }
+        #endif
+        return .overview
+    }()
     @State private var loading = false
 
     enum Section: String, CaseIterable, Identifiable {
@@ -196,7 +205,13 @@ private func nonEmpty(_ s: String?) -> String? { s?.isEmpty == false ? s : nil }
 
 private struct AttendanceCard: View {
     let entry: TrackedEntry
-    @State private var editing = false
+    @State private var editing: Bool = {
+        #if DEBUG
+        return DemoData.opensStatus
+        #else
+        return false
+        #endif
+    }()
     private var event: Event { entry.event }
     private var detail: EventDetail? { entry.detail }
     /// Like the original app: only before the event starts, never for archived entries.

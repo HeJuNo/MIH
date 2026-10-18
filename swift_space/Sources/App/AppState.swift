@@ -60,7 +60,8 @@ final class AppState {
             unseenChanges = 2
             lastSync = .now.addingTimeInterval(-420)
             preferences.set(false, for: entries[3].id)
-            if ProcessInfo.processInfo.arguments.contains("-demoDetail") { schedulePath = [entries[2].id] }
+            if let i = DemoData.detailIndex, entries.indices.contains(i) { schedulePath = [entries[i].id] }
+            if DemoData.opensPast { schedulePath = [PastEventsView.route] }
             if let tab = UserDefaults.standard.string(forKey: "demoTab") {
                 selectedTab = tab == "changes" ? .changes : tab == "settings" ? .settings : .schedule
             }
