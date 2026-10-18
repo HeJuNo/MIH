@@ -21,6 +21,17 @@ final class NormalizerTests: XCTestCase {
         XCTAssertNil(p.clubGames)
     }
 
+    func testBooleansFromRealAPI() throws {
+        let json = #"{"id_game":1,"time_start":"12:40","time_end":"01:00","health_status_notes":false,"event_notes":true,"has_notifications":false}"#
+        let e = try JSONDecoder().decode(Event.self, from: JSONNormalizer.normalize(Data(json.utf8)))
+        XCTAssertNil(e.healthStatusNotes)
+        XCTAssertEqual(e.eventNotes, "1")
+        XCTAssertNil(e.hasNotifications)
+        XCTAssertEqual(EventDates.timeRange(start: e.timeStart, end: e.timeEnd), "12:40")
+        XCTAssertEqual(EventDates.timeRange(start: "17:30", end: "18:20"), "17:30 – 18:20")
+        XCTAssertNil(EventDates.meaningfulTime("00:00"))
+    }
+
     func testEmptyListWhereObjectExpected() throws {
         let json = #"{"eventData":{"convocation":[],"notifications":[],"available":"0"}}"#
         let r = try JSONDecoder().decode(EventDetailResponse.self, from: JSONNormalizer.normalize(Data(json.utf8)))

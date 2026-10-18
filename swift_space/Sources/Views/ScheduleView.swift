@@ -182,7 +182,7 @@ struct EventRow: View {
             VStack(spacing: 2) {
                 Text(EventDates.shortTime(event.timeStart))
                     .font(.headline.monospacedDigit())
-                Text(EventDates.shortTime(event.timeEnd))
+                Text(event.displayEnd ?? " ")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }

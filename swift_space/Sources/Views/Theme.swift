@@ -28,9 +28,11 @@ extension Event {
     var tint: Color { Color(hex: color) ?? (kind == .games ? Theme.accent : Theme.ice) }
     var isGame: Bool { idGame != nil }
     var start: Date? { EventDates.start(of: self) }
-    var timeRange: String {
+    var timeRange: String { EventDates.timeRange(start: timeStart, end: timeEnd) }
+    /// End time only when it is plausible (see `EventDates.timeRange`).
+    var displayEnd: String? {
         let s = EventDates.shortTime(timeStart), e = EventDates.shortTime(timeEnd)
-        return e.isEmpty ? s : "\(s) – \(e)"
+        return !e.isEmpty && e > s ? e : nil
     }
     var subtitle: String { [agegroup, practicegroup].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ") }
     var kindLabel: String { isGame ? "Spiel" : "Training" }

@@ -86,7 +86,7 @@ private struct DetailHero: View {
             HStack(spacing: 8) {
                 Pill(text: entry.detail?.type ?? event.kindLabel, symbol: event.kindSymbol, color: .white.opacity(0.22))
                 if let away = entry.detail?.isAway, !away.isEmpty {
-                    Pill(text: PlainText.from(html: away).capitalized, color: .white.opacity(0.22))
+                    Pill(text: homeAway(away), color: .white.opacity(0.22))
                 }
                 Spacer()
             }
@@ -138,6 +138,15 @@ private struct DetailHero: View {
     }
 }
 
+private func homeAway(_ raw: String) -> String {
+    let t = PlainText.from(html: raw)
+    switch t.lowercased() {
+    case "home", "heim": return "Heim"
+    case "away", "auswärts", "auswaerts": return "Auswärts"
+    default: return t.capitalized
+    }
+}
+
 private struct HeroChip: View {
     let symbol: String
     let text: String
@@ -167,8 +176,10 @@ private struct OverviewSection: View {
                          value: event.start?.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de)))
                 InfoTile(symbol: "clock", label: "Zeit", value: event.timeRange)
                 if event.isGame {
-                    InfoTile(symbol: "bus.fill", label: detail?.departure ?? "Abfahrt", value: detail?.departureTime)
-                    InfoTile(symbol: "person.2.wave.2.fill", label: detail?.meeting ?? "Treffpunkt", value: detail?.meetingTime)
+                    InfoTile(symbol: "bus.fill", label: nonEmpty(detail?.departure) ?? "Abfahrt",
+                             value: EventDates.meaningfulTime(detail?.departureTime))
+                    InfoTile(symbol: "person.2.wave.2.fill", label: nonEmpty(detail?.meeting) ?? "Treffpunkt",
+                             value: EventDates.meaningfulTime(detail?.meetingTime))
                 }
             }
 
@@ -193,6 +204,8 @@ private struct OverviewSection: View {
         }
     }
 }
+
+private func nonEmpty(_ s: String?) -> String? { s?.isEmpty == false ? s : nil }
 
 private struct AttendanceCard: View {
     let event: Event

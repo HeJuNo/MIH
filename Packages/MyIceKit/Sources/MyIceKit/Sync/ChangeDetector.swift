@@ -65,11 +65,13 @@ public enum ChangeDetector {
 
         guard let da = a.detail, let db = b.detail else { return out }
 
-        if norm(da.departureTime) != norm(db.departureTime) {
-            out.append(.departure(label: db.departure, old: da.departureTime ?? "", new: db.departureTime ?? ""))
+        let depA = EventDates.meaningfulTime(da.departureTime), depB = EventDates.meaningfulTime(db.departureTime)
+        if norm(depA) != norm(depB) {
+            out.append(.departure(label: nonEmpty(db.departure), old: depA ?? "", new: depB ?? ""))
         }
-        if norm(da.meetingTime) != norm(db.meetingTime) {
-            out.append(.meeting(label: db.meeting, old: da.meetingTime ?? "", new: db.meetingTime ?? ""))
+        let meetA = EventDates.meaningfulTime(da.meetingTime), meetB = EventDates.meaningfulTime(db.meetingTime)
+        if norm(meetA) != norm(meetB) {
+            out.append(.meeting(label: nonEmpty(db.meeting), old: meetA ?? "", new: meetB ?? ""))
         }
 
         let notesA = PlainText.from(html: da.notes), notesB = PlainText.from(html: db.notes)
@@ -96,9 +98,10 @@ public enum ChangeDetector {
     }
 
     static func timeRange(_ e: Event) -> String {
-        let s = EventDates.shortTime(e.timeStart), t = EventDates.shortTime(e.timeEnd)
-        return t.isEmpty ? s : "\(s)–\(t)"
+        EventDates.timeRange(start: e.timeStart, end: e.timeEnd, separator: "–")
     }
+
+    static func nonEmpty(_ s: String?) -> String? { s?.isEmpty == false ? s : nil }
 
     static func players(_ d: EventDetail) -> Set<String> {
         Set((d.convocation?.available ?? []).map { "\($0.fname ?? "") \($0.lname ?? "")".trimmingCharacters(in: .whitespaces) })

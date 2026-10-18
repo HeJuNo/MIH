@@ -1,7 +1,8 @@
 import Foundation
 
 /// Smooths over PHP JSON quirks before `Decodable` sees the payload:
-/// * numbers and booleans → strings (`String?` fields accept them; `LenientInt` parses them back)
+/// * numbers → strings (`String?` fields accept them; `LenientInt` parses them back)
+/// * `false` → `null`, `true` → `"1"` (the API uses `false` for "no notes")
 /// * `[]` → `null` (PHP encodes an empty associative array as a list)
 /// * objects keyed `"0","1",…` → arrays (PHP encodes non-sequential lists as objects)
 enum JSONNormalizer {
@@ -15,7 +16,7 @@ enum JSONNormalizer {
     static func normalize(value: Any) -> Any {
         switch value {
         case let n as NSNumber:
-            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue ? "1" : "0" }
+            if CFGetTypeID(n) == CFBooleanGetTypeID() { return n.boolValue ? "1" as Any : NSNull() }
             return n.stringValue
         case let a as [Any]:
             return a.isEmpty ? NSNull() : a.map(normalize(value:))

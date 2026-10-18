@@ -43,6 +43,19 @@ public enum EventDates {
         return raw.split(separator: ":").prefix(2).joined(separator: ":")
     }
 
+    /// `"00:00"` and empty mean "not set" for departure/meeting times.
+    public static func meaningfulTime(_ raw: String?) -> String? {
+        guard let t = raw?.trimmingCharacters(in: .whitespaces), !t.isEmpty, t != "00:00", t != "00:00:00" else { return nil }
+        return t
+    }
+
+    /// `HH:MM – HH:MM`, dropping an end time that lies before the start (the API sends "01:00" for open-ended games).
+    public static func timeRange(start: String?, end: String?, separator: String = " – ") -> String {
+        let s = shortTime(start), e = shortTime(end)
+        guard !e.isEmpty, e > s else { return s }
+        return s + separator + e
+    }
+
     /// Groups events by calendar day, preserving server order (the original groups by formatted label).
     public static func groupedByDay(_ events: [Event]) -> [(day: Date, events: [Event])] {
         var order: [Date] = []
