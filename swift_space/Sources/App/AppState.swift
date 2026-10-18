@@ -20,6 +20,9 @@ final class AppState {
 
     // Data
     private(set) var entries: [TrackedEntry] = []
+    /// Past entries (local archive + one-time web import), newest first.
+    private(set) var archive: [TrackedEntry] = []
+    private(set) var isImportingHistory = false
     private(set) var changeLog: [EventChange] = []
     private(set) var lastSync: Date?
     private(set) var lastError: String?
@@ -50,7 +53,8 @@ final class AppState {
         #if DEBUG
         if DemoData.isEnabled {
             user = DemoData.user
-            entries = DemoData.entries()
+            entries = DemoData.entriesWithClubs()
+            archive = DemoData.archive()
             changeLog = DemoData.changes(for: entries)
             unseenChanges = 2
             lastSync = .now.addingTimeInterval(-420)
@@ -90,6 +94,7 @@ final class AppState {
     func reloadFromStore() async {
         let state = await env.syncStore.load()
         entries = state.entries
+        archive = state.archive ?? []
         changeLog = state.changeLog
         lastSync = state.lastSync
         lastError = state.lastError
@@ -128,6 +133,23 @@ final class AppState {
         }
         await refresh(reason: "login")
         BackgroundRefresh.schedule()
+        await importHistory(email: email, password: password)
+    }
+
+    /// One-time import of the season's past via the web API; the password is not stored.
+    func importHistory(email: String, password: String) async {
+        guard let user, let player = user.info.idPlayer, let season = user.info.idSeason,
+              let club = user.info.idClub ?? clubIDs.first else { return }
+        isImportingHistory = true
+        defer { isImportingHistory = false }
+        do {
+            let past = try await WebHistoryClient().pastEntries(email: email, password: password, playerID: player,
+                                                                seasonID: season, clubID: club)
+            await env.engine.importHistory(past)
+            await reloadFromStore()
+        } catch {
+            // History is a bonus; the live schedule works without it.
+        }
     }
 
     func logout() async {
@@ -143,11 +165,30 @@ final class AppState {
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
     }
 
-    func selectClub(_ id: String) async {
-        guard id != selectedClubID else { return }
-        env.session.saveSelectedClub(id)
-        selectedClubID = id
-        await refresh(reason: "club")   // new club → new baseline, no notifications
+    var clubIDs: [String] {
+        guard let user else { return [] }
+        return SyncCoordinator.clubIDs(for: user, fallback: selectedClubID)
+    }
+
+    var clubs: [Club] { user?.info.activeClubs ?? [] }
+    var hasMultipleClubs: Bool { clubs.count > 1 }
+
+    func clubName(_ id: String?) -> String? {
+        guard let id else { return nil }
+        return clubs.first { $0.clubID == id }?.clubName
+    }
+
+    // MARK: Status
+
+    /// Changes the player's own status (and attendance for requested games).
+    func submitStatus(for entry: TrackedEntry, _ submission: StatusRules.Submission) async throws {
+        guard let player = user?.info.idPlayer else { return }
+        let endpoint = try StatusRules.endpoint(for: [entry.event], playerID: player, submission: submission)
+        try await env.api.perform(endpoint)
+        // Own change → baseline, so no notification echoes it back.
+        await env.engine.applyLocalStatus(eventKey: entry.id, submission: submission)
+        await reloadFromStore()
+        Task { await refresh(reason: "status") }
     }
 
     // MARK: Notifications
@@ -210,7 +251,7 @@ final class AppState {
 
     // MARK: Details
 
-    func entry(for key: String) -> TrackedEntry? { entries.first { $0.id == key } }
+    func entry(for key: String) -> TrackedEntry? { entries.first { $0.id == key } ?? archive.first { $0.id == key } }
 
     func changes(for key: String) -> [EventChange] { changeLog.filter { $0.eventKey == key } }
 
@@ -218,7 +259,7 @@ final class AppState {
         #if DEBUG
         if DemoData.isEnabled { return }
         #endif
-        _ = try? await env.engine.refreshDetail(for: entry.event, clubID: selectedClubID, playerID: user?.info.idPlayer)
+        _ = try? await env.engine.refreshDetail(for: entry, playerID: user?.info.idPlayer)
         await reloadFromStore()
     }
 

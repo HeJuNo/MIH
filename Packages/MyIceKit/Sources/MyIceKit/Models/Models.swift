@@ -21,13 +21,14 @@ public struct Club: Codable, Hashable, Sendable, Identifiable {
 public struct UserInfo: Codable, Hashable, Sendable {
     @LenientInt public var idPlayer: Int?
     @LenientString public var idClub: String?
+    @LenientString public var idSeason: String?
     public var fname: String?
     public var lname: String?
     @LenientURL public var photo: URL?
     public var activeClubs: [Club]?
 
     enum CodingKeys: String, CodingKey {
-        case idPlayer = "id_player", idClub = "id_club", fname, lname, photo, activeClubs = "active_clubs"
+        case idPlayer = "id_player", idClub = "id_club", idSeason = "id_season", fname, lname, photo, activeClubs = "active_clubs"
     }
 }
 

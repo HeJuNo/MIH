@@ -12,9 +12,12 @@ A native iOS companion for **myice.hockey** player accounts. It shows your *Spie
 | **Event detail** | **Overview** (attendance/status, place, date, time, departure and meeting point, notes, maps), **People** (staff and players grouped by goalie/defence/forward with jersey numbers), **Messages** (club messages plus a history of the changes detected for this event) |
 | **Per-event notifications** | Bell toggle in the detail view, the list context menu and the detail header |
 | **Change notifications** | Background refresh fetches the schedule and every upcoming entry's detail, diffs it against the last snapshot and posts **one notification per change**. Tapping a notification opens the event. |
+| **Change status** | Gesund / Entschuldigt / Krank / Verletzt with a note (150 chars), answer attendance requests for games. Only before the event starts; "Gesund" is coach-only for games. Your own changes never trigger a notification. |
+| **Multiple clubs** | The schedule of every active club is merged, with club chips for filtering. Changes are tracked per club, and a newly added club starts with its own baseline. |
+| **Past entries** | The mobile API only returns today onwards. At login the season's past is imported once via the web API (`/api/players/playersfilter`), and the password is not stored. After that, entries are archived locally as they drop out. |
 | **Settings** | Default on/off for change notifications, per-category filters, notification permission, background interval, "check now", test notification, club switcher, logout |
 
-Not in phase 1: changing your status or attendance, club calendar, multi-account.
+Not yet: club calendar (`club_games`), multi-account.
 
 ## How change tracking works
 

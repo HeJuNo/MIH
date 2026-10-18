@@ -77,3 +77,65 @@ final class ChangeDetectorTests: XCTestCase {
         XCTAssertEqual(back, c)
     }
 }
+
+final class SyncEngineTests: XCTestCase {
+    /// Serves canned JSON per path + id_club and records requests.
+    final class FakeTransport: HTTPTransport, @unchecked Sendable {
+        var responses: [String: String] = [:]
+        func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+            let body = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+            let club = body.range(of: #"name="id_club"\r\n\r\n([^\r]*)"#, options: .regularExpression)
+                .map { String(body[$0]).components(separatedBy: "\r\n\r\n").last ?? "" } ?? ""
+            let key = "\(request.url!.lastPathComponent)#\(club)"
+            let json = responses[key] ?? responses[request.url!.lastPathComponent] ?? "{}"
+            return (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+    }
+    struct Ctx: RequestContextProviding {
+        func currentToken() async -> String? { "t" }
+        func currentLanguage() async -> String { "de" }
+    }
+
+    func testMultiClubMergeArchiveAndNewClubBaseline() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = SyncStore(directory: dir)
+        let transport = FakeTransport()
+        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let t0 = EventDates.parseDateTime("2026-10-18 08:00:00")!
+
+        transport.responses["refreshdata#86"] = #"{"app_data":[{"id_game":1,"name":"Spiel","datetime":"2026-10-18T12:40:00","date":"2026-10-18"},{"id_practice":2,"name":"Training","datetime":"2026-10-20T17:00:00","date":"2026-10-20","place":"A"}]}"#
+        let first = try await engine.sync(clubIDs: ["86"], playerID: 1, now: t0)
+        XCTAssertTrue(first.wasBaseline)
+        XCTAssertEqual(first.entries.map(\.clubID), ["86", "86"])
+
+        // Next day: game is past and gone, training moved, new club 83 entry appears (baseline for that club).
+        transport.responses["refreshdata#86"] = #"{"app_data":[{"id_practice":2,"name":"Training","datetime":"2026-10-20T17:00:00","date":"2026-10-20","place":"B"}]}"#
+        transport.responses["refreshdata#83"] = #"{"app_data":[{"id_practice":9,"name":"Akademie","datetime":"2026-10-21T15:00:00","date":"2026-10-21"}]}"#
+        let t1 = EventDates.parseDateTime("2026-10-19 08:00:00")!
+        let second = try await engine.sync(clubIDs: ["86", "83"], playerID: 1, now: t1)
+        XCTAssertEqual(second.changes.map(\.kind), [.place(old: "A", new: "B")])
+        XCTAssertEqual(second.entries.count, 2)
+        let state = await store.load()
+        XCTAssertEqual(state.archive?.map(\.id), ["g1"])
+
+        // Club 83 is now known: a new entry there is reported.
+        transport.responses["refreshdata#83"] = #"{"app_data":[{"id_practice":9,"name":"Akademie","datetime":"2026-10-21T15:00:00","date":"2026-10-21"},{"id_game":10,"name":"Neu","datetime":"2026-10-25T15:00:00","date":"2026-10-25"}]}"#
+        let third = try await engine.sync(clubIDs: ["86", "83"], playerID: 1, now: t1)
+        XCTAssertEqual(third.changes.map(\.kind), [.added])
+    }
+
+    func testOwnStatusChangeIsNotReported() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = SyncStore(directory: dir)
+        let transport = FakeTransport()
+        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let now = EventDates.parseDateTime("2026-10-18 08:00:00")!
+        transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":2,"datetime":"2026-10-20T17:00:00","date":"2026-10-20","health_status":3,"available":0}]}"#
+        _ = try await engine.sync(clubIDs: ["86"], playerID: 1, now: now)
+
+        await engine.applyLocalStatus(eventKey: "p2", submission: .init(status: .sick, notes: "Fieber"))
+        transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":2,"datetime":"2026-10-20T17:00:00","date":"2026-10-20","health_status":8,"health_status_notes":"Fieber","available":0}]}"#
+        let r = try await engine.sync(clubIDs: ["86"], playerID: 1, now: now)
+        XCTAssertTrue(r.changes.isEmpty, "\(r.changes.map(\.kind))")
+    }
+}

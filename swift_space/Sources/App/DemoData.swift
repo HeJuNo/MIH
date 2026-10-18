@@ -7,7 +7,7 @@ enum DemoData {
     static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-demo") }
 
     static let user = User(id: "1", email: "spieler@example.com",
-                           info: decode(##"{"id_player":1,"id_club":"1","fname":"Alex","lname":"Muster","active_clubs":[{"club_id":"1","club_name":"EHC Musterstadt"}]}"##),
+                           info: decode(##"{"id_player":1,"id_club":"1","fname":"Alex","lname":"Muster","active_clubs":[{"club_id":"1","club_name":"EHC Musterstadt"},{"club_id":"2","club_name":"Eishockey Akademie"}]}"##),
                            hasNotifications: true)
 
     static func entries(now: Date = .now) -> [TrackedEntry] {
@@ -28,6 +28,30 @@ enum DemoData {
                          detail: decode(##"{"type":"Meisterschaft","is_away":"ausw&auml;rts","category":"games","available":0,"departure":"Abfahrt Bus","departure_time":"08:45","meeting":"Treffpunkt","meeting_time":"08:30 Parkplatz Halle",\##(roster)}"##)),
             TrackedEntry(event: decode(##"{"id_practice":12,"name":"Off-Ice Athletik","agegroup":"U15","place":"Turnhalle Mittelschule","color":"#43A047","date":"\##(d4)","datetime":"\##(t4)","time_start":"17:30:00","time_end":"18:30:00","available":0,"health_status":8,"health_status_notes":"Erkältet"}"##)),
         ]
+    }
+
+    /// Assigns clubs: the off-ice session belongs to the second club.
+    static func entriesWithClubs(now: Date = .now) -> [TrackedEntry] {
+        entries(now: now).enumerated().map { i, e in
+            var e = e
+            e.clubID = i == 3 ? "2" : "1"
+            return e
+        }
+    }
+
+    static func archive(now: Date = .now) -> [TrackedEntry] {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        func day(_ offset: Int) -> String { f.string(from: Calendar.current.date(byAdding: .day, value: offset, to: now)!) }
+        let rows: [(String, Int)] = [
+            (##"{"id_game":5,"name":"HC Talheim – EHC Musterstadt","agegroup":"U15","place":"Sportzentrum Talheim","color":"#8E24AA","date":"\##(day(-1))","datetime":"\##(day(-1)) 12:40:00","time_start":"12:40","time_end":"01:00","available":0,"health_status":1}"##, -1),
+            (##"{"id_practice":6,"name":"Eistraining","agegroup":"U15","practicegroup":"Gruppe A","place":"Eishalle Musterstadt","color":"#1E88E5","date":"\##(day(-3))","datetime":"\##(day(-3)) 17:30:00","time_start":"17:30","time_end":"19:00","available":0,"health_status":8,"health_status_notes":"Fieber"}"##, -3),
+            (##"{"id_practice":7,"name":"Athletik","agegroup":"U15","place":"Turnhalle","color":"#43A047","date":"\##(day(-4))","datetime":"\##(day(-4)) 16:00:00","time_start":"16:00","time_end":"17:00","available":0,"health_status":1}"##, -4),
+        ]
+        return rows.map { json, _ in
+            var e = TrackedEntry(event: decode(json), clubID: "1")
+            e.archivedAt = now
+            return e
+        }
     }
 
     static func changes(for entries: [TrackedEntry], now: Date = .now) -> [EventChange] {

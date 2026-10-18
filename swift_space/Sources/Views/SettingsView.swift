@@ -6,6 +6,8 @@ struct SettingsView: View {
     @Environment(AppState.self) private var state
     @State private var confirmLogout = false
     @State private var testSent = false
+    @State private var askPassword = false
+    @State private var password = ""
 
     var body: some View {
         NavigationStack {
@@ -38,14 +40,42 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 4)
 
-                let clubs = user.info.activeClubs ?? []
-                if clubs.count > 1 {
-                    Picker("Verein", selection: Binding(get: { state.selectedClubID ?? "" },
-                                                       set: { id in Task { await state.selectClub(id) } })) {
-                        ForEach(clubs) { Text($0.clubName ?? $0.id).tag($0.id) }
+                ForEach(state.clubs) { club in
+                    HStack(spacing: 12) {
+                        AsyncImage(url: club.clubLogo) { $0.resizable().scaledToFit() } placeholder: {
+                            Image(systemName: "shield.fill").foregroundStyle(.tint)
+                        }
+                        .frame(width: 26, height: 26)
+                        Text(club.clubName ?? club.id).font(.subheadline)
+                        Spacer()
+                        let count = state.entries.filter { $0.clubID == club.id }.count
+                        Text("\(count) Termine").font(.caption).foregroundStyle(.secondary)
                     }
-                } else if let club = clubs.first {
-                    LabeledContent("Verein", value: club.clubName ?? club.id)
+                }
+
+                Button {
+                    askPassword = true
+                } label: {
+                    HStack {
+                        Label { Text("Vergangene Termine laden") } icon: {
+                            SettingsIcon(symbol: "clock.arrow.circlepath", color: .indigo)
+                        }
+                        Spacer()
+                        if state.isImportingHistory { ProgressView() }
+                        else { Text("\(state.archive.count)").font(.caption).foregroundStyle(.secondary) }
+                    }
+                }
+                .disabled(state.isImportingHistory)
+                .alert("Vergangene Termine laden", isPresented: $askPassword) {
+                    SecureField("Passwort", text: $password)
+                    Button("Laden") {
+                        let pw = password
+                        password = ""
+                        Task { await state.importHistory(email: user.email, password: pw) }
+                    }
+                    Button("Abbrechen", role: .cancel) { password = "" }
+                } message: {
+                    Text("Die bisherige Saison wird einmalig über die Web-Version geladen. Das Passwort wird nicht gespeichert.")
                 }
 
                 Button("Abmelden", role: .destructive) { confirmLogout = true }

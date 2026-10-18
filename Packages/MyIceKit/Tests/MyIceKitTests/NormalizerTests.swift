@@ -39,3 +39,27 @@ final class NormalizerTests: XCTestCase {
         XCTAssertEqual(r.eventData?.available, 0)
     }
 }
+
+final class WebHistoryTests: XCTestCase {
+    func testParsePlayersFilterRows() throws {
+        let json = #"""
+        {"draw":1,"data":[
+         {"id_practice":"862805","id_group":"15832","name":"U-14 (Winter)","type":"Trockentraining","place":"Halle","date":"2026-10-16","time_start":"18:25:00","time_end":"19:10:00","health_status":"1","health_notes":"","notes":"Abholen bis 19:40","color":"#81c881","editable":"false"},
+         {"id_game":"162754","name":"EAC Junior Capitals","agegroup":"U-14 (pre season)","type":"Freundschaft","place":"Halle B","date":"2026-08-15","time_start":"13:00:00","time_end":"15:00:00","meeting":"00:00","departure":"00:00","health_status":"1","notes":"Treffpunkt 11:45<br />","health_notes":"None","available":"0","color":"#81c881"}
+        ]}
+        """#
+        let entries = try WebHistoryClient.parse(Data(json.utf8), clubID: "86", fetchedAt: .now)
+        XCTAssertEqual(entries.map(\.id), ["p862805", "g162754"])
+        let p = entries[0]
+        XCTAssertEqual(p.event.name, "Trockentraining")
+        XCTAssertEqual(p.event.agegroup, "U-14")
+        XCTAssertEqual(p.event.practicegroup, "Winter")
+        XCTAssertNotNil(EventDates.start(of: p.event))
+        let g = entries[1]
+        XCTAssertNil(g.event.healthStatusNotes)
+        XCTAssertNil(EventDates.meaningfulTime(g.detail?.departureTime))
+        XCTAssertEqual(PlainText.from(html: g.detail?.notes), "Treffpunkt 11:45")
+        XCTAssertEqual(g.clubID, "86")
+        XCTAssertEqual(EventDates.timeRange(start: "00:00", end: "00:00"), "")
+    }
+}

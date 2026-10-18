@@ -51,9 +51,9 @@ struct Pill: View {
             if let symbol { Image(systemName: symbol).imageScale(.small) }
             Text(text).lineLimit(1)
         }
-        .font(.caption.weight(.semibold))
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
+        .font(.caption2.weight(.semibold))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
         .foregroundStyle(filled ? .white : color)
         .background(filled ? AnyShapeStyle(color.gradient) : AnyShapeStyle(color.opacity(0.14)), in: Capsule())
     }
@@ -89,7 +89,7 @@ struct Card<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             if let title {
                 Label(title, systemImage: symbol ?? "circle")
-                    .font(.footnote.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .textCase(.uppercase)
                     .foregroundStyle(.secondary)
                     .labelStyle(.titleAndIcon)
@@ -97,8 +97,8 @@ struct Card<Content: View>: View {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -110,11 +110,11 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: symbol)
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 38, weight: .light))
                 .foregroundStyle(Theme.accent.gradient)
                 .symbolEffect(.pulse, options: .repeating)
-            Text(title).font(.headline)
-            Text(message).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(title).font(.subheadline.weight(.semibold))
+            Text(message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .padding(32)
         .frame(maxWidth: .infinity)

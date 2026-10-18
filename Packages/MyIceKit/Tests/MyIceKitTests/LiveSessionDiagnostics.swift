@@ -36,6 +36,16 @@ final class LiveSessionDiagnostics: XCTestCase {
         }
         ctx.token = token
 
+        for club in user.info.activeClubs ?? [] {
+            let d = try await rawData(client, .refreshData(clubID: club.clubID))
+            save(d, "refreshdata-\(club.id).json", dump)
+            let r = try JSONDecoder().decode(SessionPayload.self, from: JSONNormalizer.normalize(d))
+            let ids = (r.appData ?? []).map(\.id)
+            print("CLUB \(club.id) \(club.clubName ?? "-"): app_data=\(ids.count) first=\(ids.prefix(3))")
+        }
+        let past = try await WebHistoryClient().pastEntries(email: email, password: password, playerID: user.info.idPlayer ?? 0,
+                                                            seasonID: user.info.idSeason ?? "", clubID: user.info.idClub ?? "")
+        print("WEBHISTORY past=\(past.count) newest=\(past.first.map { "\($0.id) \($0.event.name ?? "") \($0.event.agegroup ?? "")/\($0.event.practicegroup ?? "")" } ?? "-") oldest=\(past.last?.event.date ?? "-")")
         let refreshData = try await rawData(client, .refreshData(clubID: user.info.idClub))
         save(refreshData, "refreshdata.json", dump)
         do {

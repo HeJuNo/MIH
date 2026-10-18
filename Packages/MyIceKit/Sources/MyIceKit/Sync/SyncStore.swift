@@ -3,15 +3,19 @@ import Foundation
 /// Everything the sync engine remembers between runs.
 public struct SyncState: Codable, Sendable {
     public var entries: [TrackedEntry] = []
+    /// Past entries kept locally, newest first. Optional so older state files still decode.
+    public var archive: [TrackedEntry]?
     public var lastSync: Date?
     public var lastAttempt: Date?
     public var lastError: String?
     /// Newest first, capped at `SyncState.changeLogLimit`.
     public var changeLog: [EventChange] = []
-    /// Club the baseline belongs to; switching clubs resets the baseline.
-    public var clubID: String?
+    /// Clubs covered by the baseline; a newly added club starts with its own baseline.
+    public var clubIDs: [String]?
 
     public static let changeLogLimit = 300
+    public static let archiveLimit = 400
+    public static let archiveRetention: TimeInterval = 400 * 24 * 3600
     public init() {}
 
     public var hasBaseline: Bool { lastSync != nil }

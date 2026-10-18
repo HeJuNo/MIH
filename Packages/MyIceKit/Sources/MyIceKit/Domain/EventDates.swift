@@ -52,6 +52,7 @@ public enum EventDates {
     /// `HH:MM – HH:MM`, dropping an end time that lies before the start (the API sends "01:00" for open-ended games).
     public static func timeRange(start: String?, end: String?, separator: String = " – ") -> String {
         let s = shortTime(start), e = shortTime(end)
+        if s.isEmpty || (s == "00:00" && (e.isEmpty || e == "00:00")) { return "" }   // time not set yet
         guard !e.isEmpty, e > s else { return s }
         return s + separator + e
     }

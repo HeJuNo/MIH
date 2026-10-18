@@ -6,13 +6,18 @@ public struct TrackedEntry: Codable, Hashable, Sendable, Identifiable {
     public var event: Event
     public var detail: EventDetail?
     public var detailFetchedAt: Date?
+    /// Club whose `/refreshdata` delivered this entry (needed for `/getevent`).
+    public var clubID: String?
+    /// Set once the entry dropped out of `app_data` after it took place (the API only returns today onwards).
+    public var archivedAt: Date?
 
     public var id: String { event.id }
 
-    public init(event: Event, detail: EventDetail? = nil, detailFetchedAt: Date? = nil) {
+    public init(event: Event, detail: EventDetail? = nil, detailFetchedAt: Date? = nil, clubID: String? = nil) {
         self.event = event
         self.detail = detail
         self.detailFetchedAt = detailFetchedAt
+        self.clubID = clubID
     }
 }
 

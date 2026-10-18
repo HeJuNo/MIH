@@ -55,22 +55,22 @@ struct ChangeLine: View {
         let text = ChangeFormatter.text(for: change)
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: text.symbol)
-                .font(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
+                .font(.footnote.weight(.semibold))
+                .frame(width: 30, height: 30)
                 .background(color.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .foregroundStyle(.white)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(text.headline).font(.subheadline.weight(.semibold))
+                    Text(text.headline).font(.footnote.weight(.semibold))
                     Spacer()
                     Text(change.detectedAt, format: .dateTime.hour().minute())
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption2).foregroundStyle(.secondary).fixedSize()
                 }
                 if showEvent {
-                    Text(change.eventTitle).font(.footnote.weight(.medium)).foregroundStyle(.tint).lineLimit(1)
+                    Text(change.eventTitle).font(.caption.weight(.medium)).foregroundStyle(.tint).lineLimit(1)
                 }
                 if !text.detail.isEmpty {
-                    Text(text.detail).font(.footnote).foregroundStyle(.secondary).lineLimit(4)
+                    Text(text.detail).font(.caption).foregroundStyle(.secondary).lineLimit(4)
                 }
             }
         }

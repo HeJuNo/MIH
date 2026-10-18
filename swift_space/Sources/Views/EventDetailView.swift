@@ -92,16 +92,16 @@ private struct DetailHero: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 if !event.subtitle.isEmpty {
-                    Text(event.subtitle).font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.75))
+                    Text(event.subtitle).font(.footnote.weight(.medium)).foregroundStyle(.white.opacity(0.75))
                 }
-                Text(event.name ?? "Termin").font(.title.weight(.bold)).foregroundStyle(.white)
+                Text(event.name ?? "Termin").font(.title3.weight(.bold)).foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 10) {
                 if let start = event.start {
                     HeroChip(symbol: "calendar", text: start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).locale(.de)))
                 }
-                HeroChip(symbol: "clock", text: event.timeRange)
+                HeroChip(symbol: "clock", text: event.timeRange.isEmpty ? "Zeit folgt" : event.timeRange)
             }
             // Notification toggle, prominent and self-explanatory.
             Button {
@@ -111,9 +111,9 @@ private struct DetailHero: View {
                     Image(systemName: notifying ? "bell.badge.fill" : "bell.slash.fill")
                         .contentTransition(.symbolEffect(.replace))
                     Text(notifying ? "Änderungen werden gemeldet" : "Keine Benachrichtigungen")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                     Spacer()
-                    Text(notifying ? "An" : "Aus").font(.subheadline.weight(.bold))
+                    Text(notifying ? "An" : "Aus").font(.footnote.weight(.bold))
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(.white.opacity(notifying ? 0.2 : 0.1), in: Capsule())
@@ -121,7 +121,7 @@ private struct DetailHero: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(20)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             ZStack(alignment: .topTrailing) {
@@ -132,9 +132,9 @@ private struct DetailHero: View {
                     .offset(x: 30, y: -10)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .padding(.horizontal)
-        .shadow(color: event.tint.opacity(0.3), radius: 20, y: 10)
+        .shadow(color: .black.opacity(0.2), radius: 14, y: 8)
     }
 }
 
@@ -152,7 +152,9 @@ private struct HeroChip: View {
     let text: String
     var body: some View {
         Label(text, systemImage: symbol)
-            .font(.footnote.weight(.semibold))
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(.white.opacity(0.16), in: Capsule())
             .foregroundStyle(.white)
@@ -168,13 +170,13 @@ private struct OverviewSection: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            AttendanceCard(event: event, detail: detail)
+            AttendanceCard(entry: entry)
 
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                 InfoTile(symbol: "mappin.and.ellipse", label: "Ort", value: event.place, span: true)
                 InfoTile(symbol: "calendar", label: "Datum",
                          value: event.start?.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de)))
-                InfoTile(symbol: "clock", label: "Zeit", value: event.timeRange)
+                InfoTile(symbol: "clock", label: "Zeit", value: event.timeRange.isEmpty ? "Zeit folgt" : event.timeRange)
                 if event.isGame {
                     InfoTile(symbol: "bus.fill", label: nonEmpty(detail?.departure) ?? "Abfahrt",
                              value: EventDates.meaningfulTime(detail?.departureTime))
@@ -186,7 +188,7 @@ private struct OverviewSection: View {
             if let notes = detail?.notes, !PlainText.from(html: notes).isEmpty {
                 Card(title: "Notizen", symbol: "note.text") {
                     Text(PlainText.from(html: notes))
-                        .font(.callout)
+                        .font(.subheadline)
                         .textSelection(.enabled)
                 }
             }
@@ -195,9 +197,9 @@ private struct OverviewSection: View {
                let url = URL(string: "http://maps.apple.com/?q=\(place.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
                 Link(destination: url) {
                     Label("In Karten öffnen", systemImage: "map.fill")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 11)
                         .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
@@ -208,8 +210,12 @@ private struct OverviewSection: View {
 private func nonEmpty(_ s: String?) -> String? { s?.isEmpty == false ? s : nil }
 
 private struct AttendanceCard: View {
-    let event: Event
-    let detail: EventDetail?
+    let entry: TrackedEntry
+    @State private var editing = false
+    private var event: Event { entry.event }
+    private var detail: EventDetail? { entry.detail }
+    /// Like the original app: only before the event starts, never for archived entries.
+    private var editable: Bool { StatusRules.isEditable(event) && entry.archivedAt == nil }
 
     var body: some View {
         let availability = Availability(code: detail?.available ?? event.available)
@@ -219,20 +225,34 @@ private struct AttendanceCard: View {
 
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: symbol)
-                .font(.title2)
-                .frame(width: 44, height: 44)
+                .font(.title3)
+                .frame(width: 40, height: 40)
                 .background(color.gradient, in: Circle())
                 .foregroundStyle(.white)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(subtitle).font(.footnote).foregroundStyle(.secondary)
                 if let notes, !notes.isEmpty {
-                    Text("„\(notes)“").font(.footnote.italic()).foregroundStyle(.secondary).padding(.top, 2)
+                    Text("„\(notes)“").font(.caption.italic()).foregroundStyle(.secondary).padding(.top, 2)
+                }
+                if editable {
+                    Button {
+                        editing = true
+                    } label: {
+                        Label("Status ändern", systemImage: "pencil")
+                            .font(.footnote.weight(.semibold))
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(color.opacity(0.18), in: Capsule())
+                            .foregroundStyle(color)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 6)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(16)
+        .sheet(isPresented: $editing) { StatusSheet(entry: entry) }
+        .padding(14)
         .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(color.opacity(0.3)))
     }
@@ -265,17 +285,18 @@ private struct InfoTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: symbol)
-                .font(.headline)
-                .foregroundStyle(.tint)
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(value?.isEmpty == false ? value! : "–")
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.tint)
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+            Text(value?.isEmpty == false ? value! : "–")
+                .font(.footnote.weight(.semibold))
                 .lineLimit(3)
+                .minimumScaleFactor(0.85)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(.background, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .gridCellColumns(span ? 2 : 1)
     }
 }
@@ -333,8 +354,8 @@ private struct PeopleSection: View {
     @ViewBuilder private func leading(_ p: Convocation.Player) -> some View {
         if entry.detail?.category == EventKind.games.rawValue, let n = p.number, !n.isEmpty {
             Text(n)
-                .font(.subheadline.monospacedDigit().weight(.bold))
-                .frame(width: 36, height: 36)
+                .font(.footnote.monospacedDigit().weight(.bold))
+                .frame(width: 32, height: 32)
                 .background(entry.event.tint.gradient, in: Circle())
                 .foregroundStyle(.white)
         } else {
@@ -366,9 +387,9 @@ private struct PersonRow: View {
     var body: some View {
         HStack(spacing: 14) {
             leading
-            Text(name).font(.body)
+            Text(name).font(.subheadline)
             Spacer()
-            if let trailing { Text(trailing).font(.footnote.weight(.medium)).foregroundStyle(.secondary) }
+            if let trailing { Text(trailing).font(.caption.weight(.medium)).foregroundStyle(.secondary) }
         }
     }
 }
@@ -378,8 +399,8 @@ private struct Avatar: View {
     let color: Color
     var body: some View {
         Text(name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined())
-            .font(.caption.weight(.bold))
-            .frame(width: 36, height: 36)
+            .font(.caption2.weight(.bold))
+            .frame(width: 32, height: 32)
             .background(color.opacity(0.18), in: Circle())
             .foregroundStyle(color)
     }
@@ -391,12 +412,12 @@ private struct CountBadge: View {
     let color: Color
     var body: some View {
         VStack(spacing: 2) {
-            Text("\(value)").font(.title3.weight(.bold).monospacedDigit()).foregroundStyle(color)
+            Text("\(value)").font(.headline.monospacedDigit()).foregroundStyle(color)
             Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.vertical, 9)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -418,12 +439,12 @@ private struct MessagesSection: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Circle().fill(m.isRead == 1 ? Color.clear : Theme.alert).frame(width: 8, height: 8)
-                                Text(m.subject ?? "Mitteilung").font(.subheadline.weight(.semibold))
+                                Text(m.subject ?? "Mitteilung").font(.footnote.weight(.semibold))
                                 Spacer()
                                 if let d = m.date { Text(d).font(.caption).foregroundStyle(.secondary) }
                             }
                             if let body = m.message, !body.isEmpty {
-                                Text(body).font(.callout).foregroundStyle(.secondary)
+                                Text(body).font(.footnote).foregroundStyle(.secondary)
                             }
                             if let f = m.fname {
                                 Text("– \(f) \(m.lname ?? "")").font(.caption.italic()).foregroundStyle(.tertiary)
