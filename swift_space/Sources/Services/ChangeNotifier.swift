@@ -42,7 +42,8 @@ final class ChangeNotifier: Sendable {
     func request(for change: EventChange) -> UNNotificationRequest {
         let text = ChangeFormatter.text(for: change)
         let content = UNMutableNotificationContent()
-        content.title = change.eventTitle.isEmpty ? "MyHockey Data" : change.eventTitle
+        let label = ChangeFormatter.eventLabel(change)
+        content.title = label.isEmpty ? "MyHockey Data" : label
         content.subtitle = text.headline
         content.body = [text.detail, eventLine(change)].filter { !$0.isEmpty }.joined(separator: "\n")
         content.sound = .default

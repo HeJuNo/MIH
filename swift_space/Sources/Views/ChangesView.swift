@@ -14,7 +14,7 @@ struct ChangesView: View {
                         .listRowBackground(Color.clear)
                 }
                 ForEach(groupedByDay, id: \.0) { day, changes in
-                    Section(day.formatted(.relative(presentation: .named).locale(.de)).capitalized) {
+                    Section(dayTitle(day)) {
                         ForEach(changes) { change in
                             Button { state.open(eventKey: change.eventKey) } label: {
                                 ChangeLine(change: change, showEvent: true)
@@ -41,9 +41,15 @@ struct ChangesView: View {
         }
     }
 
+    private func dayTitle(_ day: Date) -> String {
+        if Calendar.current.isDateInToday(day) { return "Heute" }
+        if Calendar.current.isDateInYesterday(day) { return "Gestern" }
+        return day.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de))
+    }
+
     private var groupedByDay: [(Date, [EventChange])] {
         let groups = Dictionary(grouping: state.changeLog) { Calendar.current.startOfDay(for: $0.detectedAt) }
-        return groups.keys.sorted(by: >).map { ($0, groups[$0]!) }
+        return groups.keys.sorted(by: >).map { day in (day, groups[day]!.sorted { $0.detectedAt > $1.detectedAt }) }
     }
 }
 
@@ -67,7 +73,12 @@ struct ChangeLine: View {
                         .font(.caption2).foregroundStyle(.secondary).fixedSize()
                 }
                 if showEvent {
-                    Text(change.eventTitle).font(.caption.weight(.medium)).foregroundStyle(.tint).lineLimit(1)
+                    Text(ChangeFormatter.eventLabel(change))
+                        .font(.caption.weight(.semibold)).foregroundStyle(.tint).lineLimit(1)
+                    if let when = ChangeFormatter.eventWhen(change) {
+                        Label(when, systemImage: "calendar")
+                            .font(.caption2).foregroundStyle(.secondary).labelStyle(.titleAndIcon)
+                    }
                 }
                 if !text.detail.isEmpty {
                     Text(text.detail).font(.caption).foregroundStyle(.secondary).lineLimit(4)

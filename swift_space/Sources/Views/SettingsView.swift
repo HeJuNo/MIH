@@ -78,6 +78,9 @@ struct SettingsView: View {
                 } message: {
                     Text("Die bisherige Saison wird einmalig über die Web-Version geladen. Das Passwort wird nicht gespeichert.")
                 }
+                if let message = state.historyMessage {
+                    Text(message).font(.caption).foregroundStyle(.secondary)
+                }
 
                 Button("Abmelden", role: .destructive) { confirmLogout = true }
                     .confirmationDialog("Abmelden?", isPresented: $confirmLogout, titleVisibility: .visible) {
@@ -168,10 +171,8 @@ struct SettingsView: View {
             Picker(selection: Binding(get: { state.mapProvider }, set: { state.setMapProvider($0) })) {
                 ForEach(MapProvider.allCases) { Text($0.title).tag($0) }
             } label: {
-                Label { Text("Kartendarstellung") } icon: { SettingsIcon(symbol: "map.fill", color: Theme.positive) }
+                Label { Text("Karten") } icon: { SettingsIcon(symbol: "map.fill", color: Theme.positive) }
             }
-        } header: {
-            Text("Karten")
         } footer: {
             Text("Ist Google Maps nicht installiert, öffnet sich Google Maps im Browser.")
         }

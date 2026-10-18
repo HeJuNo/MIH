@@ -23,6 +23,8 @@ final class AppState {
     /// Past entries (local archive + one-time web import), newest first.
     private(set) var archive: [TrackedEntry] = []
     private(set) var isImportingHistory = false
+    /// Result of the last history import, shown in Settings.
+    private(set) var historyMessage: String?
     private(set) var changeLog: [EventChange] = []
     private(set) var lastSync: Date?
     private(set) var lastError: String?
@@ -61,7 +63,12 @@ final class AppState {
             lastSync = .now.addingTimeInterval(-420)
             preferences.set(false, for: entries[3].id)
             if let i = DemoData.detailIndex, entries.indices.contains(i) { schedulePath = [entries[i].id] }
-            if DemoData.opensPast { schedulePath = [PastEventsView.route] }
+            if DemoData.opensPast {
+                schedulePath = [PastEventsView.route]
+                if let i = DemoData.value(after: "-demoPast").flatMap(Int.init), archive.indices.contains(i) {
+                    schedulePath.append(archive[i].id)
+                }
+            }
             if let tab = UserDefaults.standard.string(forKey: "demoTab") {
                 selectedTab = tab == "changes" ? .changes : tab == "settings" ? .settings : .schedule
             }
@@ -140,17 +147,42 @@ final class AppState {
 
     /// One-time import of the season's past via the web API; the password is not stored.
     func importHistory(email: String, password: String) async {
-        guard let user, let player = user.info.idPlayer, let season = user.info.idSeason,
-              let club = user.info.idClub ?? clubIDs.first else { return }
+        guard var current = user else { return }
         isImportingHistory = true
+        historyMessage = nil
         defer { isImportingHistory = false }
         do {
+            // Sessions from older app versions didn't store the season: refresh the profile once.
+            if current.info.idSeason == nil {
+                let payload: SessionPayload = try await env.api.send(.login(email: email, password: password))
+                guard payload.status == 1, let token = payload.token, let fresh = payload.user else {
+                    throw APIError.rejected(message: payload.message ?? "Anmeldung fehlgeschlagen.")
+                }
+                env.session.saveToken(token)
+                env.session.saveUser(fresh)
+                user = fresh
+                current = fresh
+            }
+            guard let player = current.info.idPlayer, let season = current.info.idSeason, !clubIDs.isEmpty else {
+                historyMessage = "Saison konnte nicht ermittelt werden."
+                return
+            }
+            // Primary club last: the web session keeps the last selected club.
+            let primary = current.info.idClub
+            let clubs = clubIDs.filter { $0 != primary } + [primary].compactMap { $0 }
+            let before = archive.count
             let past = try await WebHistoryClient().pastEntries(email: email, password: password, playerID: player,
-                                                                seasonID: season, clubID: club)
+                                                                seasonID: season, clubIDs: clubs)
             await env.engine.importHistory(past)
             await reloadFromStore()
+            let added = archive.count - before
+            historyMessage = added > 0 ? "\(added) vergangene Termine geladen." : "Alle vergangenen Termine sind bereits vorhanden."
+        } catch WebHistoryClient.WebError.loginFailed {
+            historyMessage = "Anmeldung an der Web-Version fehlgeschlagen. Passwort prüfen."
+        } catch APIError.rejected(let message) {
+            historyMessage = message ?? "Anmeldung fehlgeschlagen."
         } catch {
-            // History is a bonus; the live schedule works without it.
+            historyMessage = "Laden fehlgeschlagen: \(error.localizedDescription)"
         }
     }
 

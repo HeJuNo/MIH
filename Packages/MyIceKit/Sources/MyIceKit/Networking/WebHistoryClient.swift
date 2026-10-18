@@ -13,8 +13,10 @@ public struct WebHistoryClient: Sendable {
 
     public enum WebError: Error { case loginFailed, badResponse }
 
-    /// Returns past entries (strictly before `now`), games and practices, newest first.
-    public func pastEntries(email: String, password: String, playerID: Int, seasonID: String, clubID: String,
+    /// Returns past entries (strictly before `now`) of every given club, games and practices, newest first.
+    /// The web API answers for the club selected in the session (`/?cl=<id>`), not the `club` parameter,
+    /// so each club is selected first. Pass the primary club last so the session ends where it started.
+    public func pastEntries(email: String, password: String, playerID: Int, seasonID: String, clubIDs: [String],
                             now: Date = .now) async throws -> [TrackedEntry] {
         // Ephemeral sessions keep cookies in their own in-memory jar, discarded afterwards.
         let config = URLSessionConfiguration.ephemeral
@@ -37,12 +39,20 @@ public struct WebHistoryClient: Sendable {
         let max = f.string(from: now)
 
         var entries: [TrackedEntry] = []
-        for type in ["g", "p"] {
-            let (data, _) = try await session.data(for: form("api/players/playersfilter", [
-                "type": "filter", "player_id": String(playerID), "event_type": type,
-                "season": seasonID, "club": clubID, "minDate": min, "maxDate": max,
-            ]))
-            entries += try Self.parse(data, clubID: clubID, fetchedAt: now)
+        var seen = Set<String>()
+        for clubID in clubIDs {
+            var select = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+            select.queryItems = [URLQueryItem(name: "cl", value: clubID)]
+            _ = try await session.data(from: select.url!)
+            for type in ["g", "p"] {
+                let (data, _) = try await session.data(for: form("api/players/playersfilter", [
+                    "type": "filter", "player_id": String(playerID), "event_type": type,
+                    "season": seasonID, "club": clubID, "minDate": min, "maxDate": max,
+                ]))
+                for entry in try Self.parse(data, clubID: clubID, fetchedAt: now) where seen.insert(entry.id).inserted {
+                    entries.append(entry)
+                }
+            }
         }
         return entries
             .filter { (EventDates.start(of: $0.event) ?? .distantFuture) < now }

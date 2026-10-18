@@ -44,7 +44,9 @@ final class LiveSessionDiagnostics: XCTestCase {
             print("CLUB \(club.id) \(club.clubName ?? "-"): app_data=\(ids.count) first=\(ids.prefix(3))")
         }
         let past = try await WebHistoryClient().pastEntries(email: email, password: password, playerID: user.info.idPlayer ?? 0,
-                                                            seasonID: user.info.idSeason ?? "", clubID: user.info.idClub ?? "")
+                                                            seasonID: user.info.idSeason ?? "",
+                                                            clubIDs: (user.info.activeClubs ?? []).compactMap(\.clubID))
+        print("WEBHISTORY per club: \(Dictionary(grouping: past, by: { $0.clubID ?? "-" }).mapValues(\.count))")
         print("WEBHISTORY past=\(past.count) newest=\(past.first.map { "\($0.id) \($0.event.name ?? "") \($0.event.agegroup ?? "")/\($0.event.practicegroup ?? "")" } ?? "-") oldest=\(past.last?.event.date ?? "-")")
         let refreshData = try await rawData(client, .refreshData(clubID: user.info.idClub))
         save(refreshData, "refreshdata.json", dump)

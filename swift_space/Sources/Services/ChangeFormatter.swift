@@ -72,6 +72,23 @@ enum ChangeFormatter {
         }
     }
 
+    /// "U-14 Tormanntraining" / "U-14 BL - EC Lower Austria Stars": which event a change belongs to.
+    static func eventLabel(_ c: EventChange) -> String {
+        let sub = c.eventSubtitle ?? ""
+        if c.eventKind == .practices, sub.contains(" · ") {
+            return sub.replacingOccurrences(of: " · ", with: " ")   // agegroup + practice group
+        }
+        return [sub, c.eventTitle].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// "Mo., 19. Okt. · 17:30" of the event itself.
+    static func eventWhen(_ c: EventChange) -> String? {
+        guard let start = c.eventStart else { return nil }
+        let day = start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).locale(.de))
+        let time = start.formatted(.dateTime.hour().minute().locale(.de))
+        return time == "00:00" ? day : "\(day) · \(time)"
+    }
+
     // MARK: - Helpers
 
     private static func when(_ c: EventChange) -> String {

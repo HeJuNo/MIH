@@ -13,6 +13,13 @@ struct ScheduleView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
                     let upcoming = filtered(state.entries)
+                    if !state.archive.isEmpty || state.isImportingHistory {
+                        NavigationLink(value: PastEventsView.route) {
+                            PastLinkLabel(count: filtered(state.archive).count, importing: state.isImportingHistory)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal)
+                    }
                     if filter == .all, club == nil, let next = upcoming.first(where: { ($0.event.start ?? .distantPast) > .now }) {
                         NavigationLink(value: next.id) { NextUpCard(entry: next) }
                             .buttonStyle(.plain)
@@ -27,13 +34,6 @@ struct ScheduleView: View {
                     }
                     EntrySections(entries: upcoming)
 
-                    if !state.archive.isEmpty || state.isImportingHistory {
-                        NavigationLink(value: PastEventsView.route) {
-                            PastLinkLabel(count: filtered(state.archive).count, importing: state.isImportingHistory)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal)
-                    }
                 }
                 .padding(.bottom, 24)
             }
