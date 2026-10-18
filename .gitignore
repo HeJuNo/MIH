@@ -1,0 +1,17 @@
+.logs/
+*.nfs*
+.DS_Store
+*.xcodeproj/
+*.xcworkspace/
+build/
+DerivedData/
+.build/
+.swiftpm/
+fastlane/report.xml
+fastlane/test_output/
+fastlane/new_certificate_needed.txt
+artifacts/
+buildlog/
+*.ipa
+*.dSYM.zip
+*.mobileprovision

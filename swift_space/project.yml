@@ -1,0 +1,49 @@
+name: MyHockeyData
+options:
+  createIntermediateGroups: true
+  developmentLanguage: de
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+packages:
+  MyIceKit:
+    path: ../Packages/MyIceKit
+targets:
+  MyHockeyData:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - Sources
+      - Assets.xcassets
+    dependencies:
+      - package: MyIceKit
+    settings:
+      base:
+        # Overridden by fastlane (com.<TEAMID>.MyHockeyData) for signed builds.
+        PRODUCT_BUNDLE_IDENTIFIER: com.myhockeydata.app
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: MyHockey Data
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: de
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        ITSAppUsesNonExemptEncryption: false
+        APIBaseURL: $(API_BASE_URL)
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers:
+          - $(PRODUCT_BUNDLE_IDENTIFIER).refresh

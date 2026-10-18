@@ -1,0 +1,2 @@
+// Leave empty to use the default backend (https://app.myice.hockey/api/mobilerest).
+API_BASE_URL =

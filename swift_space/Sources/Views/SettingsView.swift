@@ -1,0 +1,213 @@
+import MyIceKit
+import SwiftUI
+import UserNotifications
+
+struct SettingsView: View {
+    @Environment(AppState.self) private var state
+    @State private var confirmLogout = false
+    @State private var testSent = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                accountSection
+                notificationSection
+                categorySection
+                backgroundSection
+                aboutSection
+            }
+            .navigationTitle("Einstellungen")
+        }
+    }
+
+    // MARK: Account
+
+    private var accountSection: some View {
+        Section {
+            if let user = state.user {
+                HStack(spacing: 14) {
+                    AsyncImage(url: user.info.photo) { $0.resizable().scaledToFill() } placeholder: {
+                        Image(systemName: "person.crop.circle.fill").resizable().foregroundStyle(.tint)
+                    }
+                    .frame(width: 54, height: 54)
+                    .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(user.info.fname ?? "") \(user.info.lname ?? "")").font(.headline)
+                        Text(user.email).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+
+                let clubs = user.info.activeClubs ?? []
+                if clubs.count > 1 {
+                    Picker("Verein", selection: Binding(get: { state.selectedClubID ?? "" },
+                                                       set: { id in Task { await state.selectClub(id) } })) {
+                        ForEach(clubs) { Text($0.clubName ?? $0.id).tag($0.id) }
+                    }
+                } else if let club = clubs.first {
+                    LabeledContent("Verein", value: club.clubName ?? club.id)
+                }
+
+                Button("Abmelden", role: .destructive) { confirmLogout = true }
+                    .confirmationDialog("Abmelden?", isPresented: $confirmLogout, titleVisibility: .visible) {
+                        Button("Abmelden", role: .destructive) { Task { await state.logout() } }
+                    } message: {
+                        Text("Die Hintergrund-Überwachung wird beendet und gespeicherte Daten werden gelöscht.")
+                    }
+            }
+        } header: { Text("Konto") }
+    }
+
+    // MARK: Notifications
+
+    private var notificationSection: some View {
+        Section {
+            permissionRow
+
+            Toggle(isOn: Binding(get: { state.preferences.enabledByDefault }, set: { state.setNotifyByDefault($0) })) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Änderungen standardmäßig melden")
+                        Text("Gilt für alle Termine ohne eigene Einstellung")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: { SettingsIcon(symbol: "bell.badge.fill", color: Theme.alert) }
+            }
+
+            let overrides = state.preferences.overrides.count
+            if overrides > 0 {
+                LabeledContent("Eigene Einstellungen", value: "\(overrides) Termin\(overrides == 1 ? "" : "e")")
+            }
+
+            Button {
+                Task {
+                    await state.sendTestNotification()
+                    testSent = true
+                }
+            } label: {
+                Label { Text(testSent ? "Test gesendet ✓" : "Test-Benachrichtigung senden") } icon: {
+                    SettingsIcon(symbol: "paperplane.fill", color: Theme.accent)
+                }
+            }
+            .disabled(state.notificationStatus != .authorized)
+        } header: {
+            Text("Benachrichtigungen")
+        } footer: {
+            Text("Die Glocke in jedem Termin überschreibt diese Voreinstellung für genau diesen Termin.")
+        }
+    }
+
+    @ViewBuilder private var permissionRow: some View {
+        switch state.notificationStatus {
+        case .authorized, .provisional, .ephemeral:
+            Label { Text("Mitteilungen erlaubt") } icon: { SettingsIcon(symbol: "checkmark", color: Theme.positive) }
+        case .denied:
+            Button { Task { await state.requestNotificationPermission() } } label: {
+                Label {
+                    VStack(alignment: .leading) {
+                        Text("Mitteilungen deaktiviert")
+                        Text("In den iOS-Einstellungen erlauben").font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: { SettingsIcon(symbol: "exclamationmark", color: Theme.alert) }
+            }
+        default:
+            Button { Task { await state.requestNotificationPermission() } } label: {
+                Label { Text("Mitteilungen erlauben") } icon: { SettingsIcon(symbol: "bell", color: Theme.warning) }
+            }
+        }
+    }
+
+    private var categorySection: some View {
+        Section {
+            ForEach(ChangeKind.Category.allCases, id: \.self) { category in
+                Toggle(isOn: Binding(get: { !state.disabledCategories.contains(category) },
+                                     set: { state.setCategory(category, enabled: $0) })) {
+                    Label { Text(ChangeFormatter.categoryTitle(category)) } icon: {
+                        SettingsIcon(symbol: ChangeFormatter.categorySymbol(category), color: .gray)
+                    }
+                }
+            }
+        } header: {
+            Text("Gemeldete Änderungen")
+        }
+    }
+
+    // MARK: Background
+
+    private var backgroundSection: some View {
+        Section {
+            Picker(selection: Binding(get: { state.refreshMinutes }, set: { state.setRefreshMinutes($0) })) {
+                ForEach(SettingsStore.refreshOptions, id: \.self) { m in
+                    Text(m < 60 ? "alle \(m) Minuten" : m == 60 ? "jede Stunde" : "alle \(m / 60) Stunden").tag(m)
+                }
+            } label: {
+                Label { Text("Prüfen") } icon: { SettingsIcon(symbol: "arrow.triangle.2.circlepath", color: Theme.accent) }
+            }
+
+            if state.backgroundRefreshStatus != .available {
+                Label {
+                    VStack(alignment: .leading) {
+                        Text("Hintergrundaktualisierung ist aus")
+                        Text("Einstellungen › Allgemein › Hintergrundaktualisierung").font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: { SettingsIcon(symbol: "exclamationmark.triangle.fill", color: Theme.warning) }
+            }
+
+            LabeledContent("Zuletzt geprüft") {
+                if let last = state.lastSync {
+                    Text(last, format: .relative(presentation: .named).locale(.de))
+                } else {
+                    Text("noch nie")
+                }
+            }
+            LabeledContent("Überwachte Termine", value: "\(state.entries.count)")
+
+            Button {
+                Task { await state.refresh() }
+            } label: {
+                HStack {
+                    Label { Text("Jetzt prüfen") } icon: { SettingsIcon(symbol: "bolt.fill", color: Theme.positive) }
+                    Spacer()
+                    if state.isSyncing { ProgressView() }
+                }
+            }
+            .disabled(state.isSyncing)
+
+            if let error = state.lastError {
+                Text(error).font(.caption).foregroundStyle(Theme.alert)
+            }
+        } header: {
+            Text("Hintergrund-Aktualisierung")
+        } footer: {
+            Text("iOS bestimmt den genauen Zeitpunkt anhand deiner Nutzung und des Akkustands. Das Intervall ist der frühestmögliche Abstand.")
+        }
+    }
+
+    private var aboutSection: some View {
+        Section {
+            LabeledContent("Version", value: Bundle.main.versionString)
+        } footer: {
+            Text("MyHockey Data ist eine inoffizielle App und steht in keiner Verbindung zu den Betreibern von myice.hockey.")
+        }
+    }
+}
+
+struct SettingsIcon: View {
+    let symbol: String
+    let color: Color
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 13, weight: .semibold))
+            .frame(width: 28, height: 28)
+            .background(color.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .foregroundStyle(.white)
+    }
+}
+
+extension Bundle {
+    var versionString: String {
+        let v = object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let b = object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "\(v) (\(b))"
+    }
+}
