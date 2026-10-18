@@ -33,6 +33,7 @@ final class AppState {
     private(set) var preferences = NotificationPreferences()
     private(set) var disabledCategories: Set<ChangeKind.Category> = []
     private(set) var refreshMinutes = 30
+    private(set) var mapProvider: MapProvider = .apple
     private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     private(set) var backgroundRefreshStatus: UIBackgroundRefreshStatus = .available
 
@@ -274,6 +275,12 @@ final class AppState {
         preferences = env.settings.preferences
         disabledCategories = env.settings.disabledCategories
         refreshMinutes = env.settings.refreshMinutes
+        mapProvider = env.settings.mapProvider
+    }
+
+    func setMapProvider(_ p: MapProvider) {
+        mapProvider = p
+        env.settings.mapProvider = p
     }
 
     private func refreshSystemStatus() async {

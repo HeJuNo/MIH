@@ -81,7 +81,6 @@ private struct DetailHero: View {
     private var event: Event { entry.event }
 
     var body: some View {
-        let notifying = state.isNotifying(entry.id)
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Pill(text: entry.detail?.type ?? event.kindLabel, symbol: event.kindSymbol, color: .white.opacity(0.22))
@@ -103,23 +102,6 @@ private struct DetailHero: View {
                 }
                 HeroChip(symbol: "clock", text: event.timeRange.isEmpty ? "Zeit folgt" : event.timeRange)
             }
-            // Notification toggle, prominent and self-explanatory.
-            Button {
-                state.setNotifying(!notifying, for: entry.id)
-            } label: {
-                HStack {
-                    Image(systemName: notifying ? "bell.badge.fill" : "bell.slash.fill")
-                        .contentTransition(.symbolEffect(.replace))
-                    Text(notifying ? "Änderungen werden gemeldet" : "Keine Benachrichtigungen")
-                        .font(.footnote.weight(.semibold))
-                    Spacer()
-                    Text(notifying ? "An" : "Aus").font(.footnote.weight(.bold))
-                }
-                .padding(.horizontal, 14).padding(.vertical, 10)
-                .background(.white.opacity(notifying ? 0.2 : 0.1), in: Capsule())
-                .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,6 +146,8 @@ private struct HeroChip: View {
 // MARK: - Overview
 
 private struct OverviewSection: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.openURL) private var openURL
     let entry: TrackedEntry
     private var event: Event { entry.event }
     private var detail: EventDetail? { entry.detail }
@@ -193,10 +177,11 @@ private struct OverviewSection: View {
                 }
             }
 
-            if let place = event.place, !place.isEmpty,
-               let url = URL(string: "http://maps.apple.com/?q=\(place.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
-                Link(destination: url) {
-                    Label("In Karten öffnen", systemImage: "map.fill")
+            if let place = event.place, !place.isEmpty, let urls = state.mapProvider.urls(for: place) {
+                Button {
+                    openURL(urls.app) { accepted in if !accepted { openURL(urls.web) } }
+                } label: {
+                    Label("In \(state.mapProvider.title) öffnen", systemImage: "map.fill")
                         .font(.footnote.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
@@ -220,58 +205,66 @@ private struct AttendanceCard: View {
     var body: some View {
         let availability = Availability(code: detail?.available ?? event.available)
         let health = HealthStatus(code: detail?.healthStatus ?? event.healthStatus)
-        let notes = detail?.healthNotes ?? event.healthStatusNotes
+        let notes = (detail?.healthNotes ?? event.healthStatusNotes)?.trimmingCharacters(in: .whitespacesAndNewlines)
         let (color, symbol, title, subtitle) = describe(availability, health)
 
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.title3)
-                .frame(width: 40, height: 40)
-                .background(color.gradient, in: Circle())
-                .foregroundStyle(.white)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(subtitle).font(.footnote).foregroundStyle(.secondary)
-                if let notes, !notes.isEmpty {
-                    Text("„\(notes)“").font(.caption.italic()).foregroundStyle(.secondary).padding(.top, 2)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.footnote.weight(.bold))
+                    .frame(width: 26, height: 26)
+                    .background(color.gradient, in: Circle())
+                    .foregroundStyle(.white)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+                Spacer(minLength: 4)
                 if editable {
-                    Button {
-                        editing = true
-                    } label: {
-                        Label("Status ändern", systemImage: "pencil")
-                            .font(.footnote.weight(.semibold))
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(color.opacity(0.18), in: Capsule())
+                    Button { editing = true } label: {
+                        Image(systemName: "pencil")
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(color)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 6)
+                    .accessibilityLabel("Status ändern")
                 }
             }
-            Spacer(minLength: 0)
+            if let notes, !notes.isEmpty {
+                Text(notes)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 36)
+            }
         }
         .sheet(isPresented: $editing) { StatusSheet(entry: entry) }
-        .padding(14)
-        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(color.opacity(0.3)))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func describe(_ a: Availability, _ h: HealthStatus) -> (Color, String, String, String) {
-        let since = detail?.availableDate.flatMap(EventDates.parseDay)?.formatted(.dateTime.day().month().year().locale(.de))
+    /// Title stays on one line; the only inline extra is the date of an attendance answer.
+    private func describe(_ a: Availability, _ h: HealthStatus) -> (Color, String, String, String?) {
+        let since = detail?.availableDate.flatMap(EventDates.parseDay)?.formatted(.dateTime.day().month().locale(.de))
         switch a {
-        case .requested:
-            return (Theme.warning, "light.beacon.max.fill", "Anwesenheit angefragt",
-                    since.map { "Angefragt am \($0)" } ?? "Der Trainer wartet auf deine Rückmeldung.")
-        case .confirmed:
-            return (Theme.positive, "checkmark", "Zugesagt", since.map { "Bestätigt am \($0)" } ?? "Du bist dabei.")
-        case .declined:
-            return (Theme.alert, "xmark", "Abgesagt", since.map { "Abgesagt am \($0)" } ?? "Du hast abgesagt.")
+        case .requested: return (Theme.warning, "exclamationmark", "Anwesenheit angefragt", since)
+        case .confirmed: return (Theme.positive, "checkmark", "Zugesagt", since)
+        case .declined: return (Theme.alert, "xmark", "Abgesagt", since)
         case .notRequested:
-            if h == .attending || h == .healthy {
-                return (Theme.positive, "checkmark", StatusText.health(h.rawValue), "Dein aktueller Status")
+            switch h {
+            case .healthy, .attending: return (Theme.positive, "checkmark", StatusText.health(h.rawValue), nil)
+            case .excused: return (Theme.warning, "calendar.badge.minus", StatusText.health(h.rawValue), nil)
+            case .sick: return (Theme.alert, "thermometer.medium", StatusText.health(h.rawValue), nil)
+            case .injured: return (Theme.alert, "bandage.fill", StatusText.health(h.rawValue), nil)
             }
-            return (Theme.alert, h == .injured ? "bandage.fill" : "xmark", StatusText.health(h.rawValue), "Dein aktueller Status")
         }
     }
 }

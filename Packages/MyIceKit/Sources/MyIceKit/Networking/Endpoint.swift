@@ -47,6 +47,8 @@ public enum Endpoint: Sendable {
     var fields: [(String, MultipartForm.Value)] {
         func opt(_ s: String?) -> MultipartForm.Value { s.map(MultipartForm.Value.string) ?? .null }
         func opt(_ st: HealthStatus?) -> MultipartForm.Value { st.map { .int($0.rawValue) } ?? .null }
+        // An empty note must be "" — the server stores a literal "null" otherwise.
+        func note(_ s: String?) -> MultipartForm.Value { .string(s ?? "") }
 
         switch self {
         case let .login(email, password):
@@ -62,13 +64,13 @@ public enum Endpoint: Sendable {
                     ("id_player", .int(playerID)), ("id_club", opt(clubID))]
         case let .setEvent(kind, eventID, playerID, status, notes):
             return [("type", .string(kind.rawValue)), ("id_event", .int(eventID)),
-                    ("id_player", .int(playerID)), ("id_status", opt(status)), ("notes", opt(notes))]
+                    ("id_player", .int(playerID)), ("id_status", opt(status)), ("notes", note(notes))]
         case let .setAvailability(gameID, playerID, available, status, notes):
             return [("id_event", .int(gameID)), ("id_player", .int(playerID)),
-                    ("available", .int(available.rawValue)), ("id_status", opt(status)), ("notes", opt(notes))]
+                    ("available", .int(available.rawValue)), ("id_status", opt(status)), ("notes", note(notes))]
         case let .setMassEvent(kind, games, practices, playerID, status, notes):
             return [("type", .string(kind.rawValue)), ("games", .list(games)), ("practices", .list(practices)),
-                    ("id_player", .int(playerID)), ("id_status", opt(status)), ("notes", opt(notes))]
+                    ("id_player", .int(playerID)), ("id_status", opt(status)), ("notes", note(notes))]
         case .getNotifications, .getBadge, .getAdvertisement:
             return []
         case let .setNotification(id):

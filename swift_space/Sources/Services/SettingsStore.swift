@@ -15,6 +15,12 @@ final class SettingsStore: @unchecked Sendable {
         static let preferences = "notificationPreferences"
         static let disabledCategories = "disabledChangeCategories"
         static let refreshMinutes = "backgroundRefreshMinutes"
+        static let mapProvider = "mapProvider"
+    }
+
+    var mapProvider: MapProvider {
+        get { defaults.string(forKey: Key.mapProvider).flatMap(MapProvider.init(rawValue:)) ?? .apple }
+        set { defaults.set(newValue.rawValue, forKey: Key.mapProvider) }
     }
 
     /// Global default ("Änderungen standardmäßig melden") + per-event overrides.
@@ -43,4 +49,25 @@ final class SettingsStore: @unchecked Sendable {
     func shouldNotify(_ change: EventChange) -> Bool {
         preferences.isEnabled(change.eventKey) && !disabledCategories.contains(change.kind.category)
     }
+}
+
+enum MapProvider: String, CaseIterable, Identifiable {
+    case apple, google
+    var id: Self { self }
+    var title: String { self == .apple ? "Apple Karten" : "Google Maps" }
+
+    /// App URL first; the second URL is the web fallback (Google Maps not installed).
+    func urls(for place: String) -> (app: URL, web: URL)? {
+        guard let q = place.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else { return nil }
+        switch self {
+        case .apple:
+            guard let u = URL(string: "https://maps.apple.com/?q=\(q)") else { return nil }
+            return (u, u)
+        case .google:
+            guard let app = URL(string: "comgooglemaps://?q=\(q)"),
+                  let web = URL(string: "https://www.google.com/maps/search/?api=1&query=\(q)") else { return nil }
+            return (app, web)
+        }
+    }
+
 }

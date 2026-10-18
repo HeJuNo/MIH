@@ -15,6 +15,7 @@ struct SettingsView: View {
                 accountSection
                 notificationSection
                 categorySection
+                mapsSection
                 backgroundSection
                 aboutSection
             }
@@ -159,6 +160,20 @@ struct SettingsView: View {
             }
         } header: {
             Text("Gemeldete Änderungen")
+        }
+    }
+
+    private var mapsSection: some View {
+        Section {
+            Picker(selection: Binding(get: { state.mapProvider }, set: { state.setMapProvider($0) })) {
+                ForEach(MapProvider.allCases) { Text($0.title).tag($0) }
+            } label: {
+                Label { Text("Kartendarstellung") } icon: { SettingsIcon(symbol: "map.fill", color: Theme.positive) }
+            }
+        } header: {
+            Text("Karten")
+        } footer: {
+            Text("Ist Google Maps nicht installiert, öffnet sich Google Maps im Browser.")
         }
     }
 

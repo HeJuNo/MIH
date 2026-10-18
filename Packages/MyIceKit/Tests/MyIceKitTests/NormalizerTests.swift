@@ -32,6 +32,14 @@ final class NormalizerTests: XCTestCase {
         XCTAssertNil(EventDates.meaningfulTime("00:00"))
     }
 
+    func testStringifiedNullsAndEmptyNoteIsSentAsEmptyString() throws {
+        let e = try JSONDecoder().decode(Event.self, from: JSONNormalizer.normalize(Data(#"{"id_practice":1,"health_status_notes":"null","place":"None"}"#.utf8)))
+        XCTAssertNil(e.healthStatusNotes)
+        XCTAssertNil(e.place)
+        let fields = Endpoint.setEvent(kind: .practices, eventID: 1, playerID: 2, status: .sick, notes: nil).fields
+        XCTAssertEqual(fields.first { $0.0 == "notes" }?.1, .string(""))
+    }
+
     func testEmptyListWhereObjectExpected() throws {
         let json = #"{"eventData":{"convocation":[],"notifications":[],"available":"0"}}"#
         let r = try JSONDecoder().decode(EventDetailResponse.self, from: JSONNormalizer.normalize(Data(json.utf8)))
