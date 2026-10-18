@@ -11,7 +11,10 @@ public struct LenientInt: Codable, Hashable, Sendable {
         let c = try decoder.singleValueContainer()
         if c.decodeNil() { wrappedValue = nil }
         else if let i = try? c.decode(Int.self) { wrappedValue = i }
-        else if let s = try? c.decode(String.self) { wrappedValue = Int(s.trimmingCharacters(in: .whitespaces)) }
+        else if let s = try? c.decode(String.self) {
+            let t = s.trimmingCharacters(in: .whitespaces)
+            wrappedValue = Int(t) ?? Double(t).map { Int($0) }
+        }
         else if let b = try? c.decode(Bool.self) { wrappedValue = b ? 1 : 0 }
         else if let d = try? c.decode(Double.self) { wrappedValue = Int(d) }
         else { wrappedValue = nil }
@@ -44,6 +47,26 @@ public struct LenientString: Codable, Hashable, Sendable {
     }
 }
 
+/// Image URLs arrive as "", relative paths or garbage; never fail the whole payload.
+@propertyWrapper
+public struct LenientURL: Codable, Hashable, Sendable {
+    public var wrappedValue: URL?
+    public init(wrappedValue: URL?) { self.wrappedValue = wrappedValue }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        guard let s = try? c.decode(String.self) else { wrappedValue = nil; return }
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { wrappedValue = nil; return }
+        wrappedValue = URL(string: t) ?? t.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed).flatMap(URL.init(string:))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(wrappedValue?.absoluteString)
+    }
+}
+
 // Missing keys decode to nil instead of throwing.
 extension KeyedDecodingContainer {
     public func decode(_ type: LenientInt.Type, forKey key: Key) throws -> LenientInt {
@@ -51,5 +74,8 @@ extension KeyedDecodingContainer {
     }
     public func decode(_ type: LenientString.Type, forKey key: Key) throws -> LenientString {
         try decodeIfPresent(type, forKey: key) ?? LenientString(wrappedValue: nil)
+    }
+    public func decode(_ type: LenientURL.Type, forKey key: Key) throws -> LenientURL {
+        try decodeIfPresent(type, forKey: key) ?? LenientURL(wrappedValue: nil)
     }
 }

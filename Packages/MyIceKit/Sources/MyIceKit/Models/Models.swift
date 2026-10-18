@@ -9,7 +9,7 @@ public struct StatusEnvelope: Decodable, Sendable {
 public struct Club: Codable, Hashable, Sendable, Identifiable {
     @LenientString public var clubID: String?
     public var clubName: String?
-    public var clubLogo: URL?
+    @LenientURL public var clubLogo: URL?
     public var id: String { clubID ?? "" }
 
     enum CodingKeys: String, CodingKey {
@@ -23,7 +23,7 @@ public struct UserInfo: Codable, Hashable, Sendable {
     @LenientString public var idClub: String?
     public var fname: String?
     public var lname: String?
-    public var photo: URL?
+    @LenientURL public var photo: URL?
     public var activeClubs: [Club]?
 
     enum CodingKeys: String, CodingKey {
@@ -190,5 +190,5 @@ public struct SavedAccount: Codable, Hashable, Sendable, Identifiable {
 public struct AddAccountResponse: Decodable, Sendable {
     @LenientInt public var status: Int?
     public var message, email, token, fname, lname: String?
-    public var photo: URL?
+    @LenientURL public var photo: URL?
 }

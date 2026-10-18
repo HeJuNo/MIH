@@ -13,14 +13,7 @@ struct LoginView: View {
     enum Field { case email, password }
 
     var body: some View {
-        ZStack {
-            Theme.heroGradient.ignoresSafeArea()
-            Circle()
-                .stroke(.white.opacity(0.06), lineWidth: 10)
-                .frame(width: 520)
-                .offset(y: -180)
-
-            ScrollView {
+        ScrollView {
                 VStack(spacing: 28) {
                     VStack(spacing: 14) {
                         Image(systemName: "hockey.puck.fill")
@@ -96,10 +89,23 @@ struct LoginView: View {
                             .foregroundStyle(.white.opacity(0.6))
                     }
                 }
+                .frame(maxWidth: 440)
                 .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity)
                 .animation(.snappy, value: error)
-            }
-            .scrollDismissesKeyboard(.interactively)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        // Decoration lives in the background so it can never widen the layout.
+        .background {
+            Theme.heroGradient
+                .overlay(alignment: .top) {
+                    Circle()
+                        .stroke(.white.opacity(0.06), lineWidth: 10)
+                        .frame(width: 520, height: 520)
+                        .offset(y: -120)
+                }
+                .clipped()
+                .ignoresSafeArea()
         }
     }
 
@@ -123,8 +129,14 @@ struct LoginView: View {
                 try await state.login(email: email.trimmingCharacters(in: .whitespaces), password: password)
             } catch APIError.rejected(let message) {
                 error = message ?? "Anmeldung fehlgeschlagen."
+            } catch APIError.http(let status) {
+                error = "Der Server meldet einen Fehler (HTTP \(status)). Bitte später erneut versuchen."
+            } catch APIError.decoding(let detail) {
+                error = "Die Antwort des Servers konnte nicht gelesen werden (\(detail))."
+            } catch let urlError as URLError {
+                error = "Keine Verbindung zum Server (\(urlError.code.rawValue)). Bitte prüfe deine Internetverbindung."
             } catch {
-                self.error = "Keine Verbindung zum Server. Bitte versuche es erneut."
+                self.error = "Anmeldung fehlgeschlagen: \(error.localizedDescription)"
             }
         }
     }

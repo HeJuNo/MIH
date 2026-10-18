@@ -67,9 +67,21 @@ public final class APIClient: Sendable {
             throw APIError.http(status: http.statusCode)
         }
         do {
-            return try decoder.decode(T.self, from: data)
+            return try decoder.decode(T.self, from: JSONNormalizer.normalize(data))
         } catch {
-            throw APIError.decoding(String(describing: error))
+            throw APIError.decoding(Self.describe(error))
+        }
+    }
+
+    static func describe(_ error: Error) -> String {
+        guard let e = error as? DecodingError else { return String(describing: error) }
+        func path(_ c: DecodingError.Context) -> String { c.codingPath.map(\.stringValue).joined(separator: ".") }
+        switch e {
+        case .typeMismatch(let t, let c): return "type \(t) at \(path(c))"
+        case .valueNotFound(let t, let c): return "missing \(t) at \(path(c))"
+        case .keyNotFound(let k, let c): return "missing key \(k.stringValue) at \(path(c))"
+        case .dataCorrupted(let c): return "corrupted at \(path(c)): \(c.debugDescription)"
+        @unknown default: return String(describing: e)
         }
     }
 
