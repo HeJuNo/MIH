@@ -50,7 +50,7 @@ struct SettingsView: View {
                         Text(club.clubName ?? club.id).font(.subheadline)
                         Spacer()
                         let count = state.entries.filter { $0.clubID == club.id }.count
-                        Text("\(count) Termine").font(.caption).foregroundStyle(.secondary)
+                        Text(count == 1 ? "1 Termin" : "\(count) Termine").font(.caption).foregroundStyle(.secondary)
                     }
                 }
 
