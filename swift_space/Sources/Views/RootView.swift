@@ -14,6 +14,11 @@ struct RootView: View {
                     ChangesView()
                 }
                 .badge(state.unseenChanges)
+                if state.loggingEnabled {
+                    Tab("Protokoll", systemImage: "list.bullet.rectangle", value: AppState.Tab.log) {
+                        LogView()
+                    }
+                }
                 Tab("Einstellungen", systemImage: "gearshape", value: AppState.Tab.settings) {
                     SettingsView()
                 }

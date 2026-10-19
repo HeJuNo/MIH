@@ -17,13 +17,11 @@ struct MyHockeyDataApp: App {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: Task { await state.didBecomeActive() }
-            case .background: BackgroundRefresh.schedule()
+            case .background:
+                AppEnvironment.shared.log(.debug, .app, "App im Hintergrund")
+                BackgroundRefresh.schedule()
             default: break
             }
-        }
-        .backgroundTask(.appRefresh(BackgroundRefresh.identifier)) {
-            await BackgroundRefresh.handle()
-            await AppState.shared.reloadFromStore()
         }
     }
 }
@@ -32,6 +30,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        AppEnvironment.shared.log(.info, .app, "App gestartet" + (launchOptions?.isEmpty == false ? " (vom System)" : ""))
+        BackgroundRefresh.register()
         return true
     }
 
@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     // Tapping a change notification opens that event.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard let key = response.notification.request.content.userInfo[ChangeNotifier.eventKeyUserInfo] as? String else { return }
+        AppEnvironment.shared.log(.debug, .notifications, "Benachrichtigung geöffnet: \(key)")
         await MainActor.run { AppState.shared.open(eventKey: key) }
     }
 }

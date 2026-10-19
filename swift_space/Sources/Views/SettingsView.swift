@@ -17,6 +17,7 @@ struct SettingsView: View {
                 categorySection
                 mapsSection
                 backgroundSection
+                logSection
                 aboutSection
             }
             .navigationTitle("Einstellungen")
@@ -206,6 +207,13 @@ struct SettingsView: View {
                     Text("noch nie")
                 }
             }
+            LabeledContent("Zuletzt im Hintergrund") {
+                if let last = state.lastBackgroundRun {
+                    Text(last, format: .relative(presentation: .named).locale(.de))
+                } else {
+                    Text("noch nie")
+                }
+            }
             LabeledContent("Überwachte Termine", value: "\(state.entries.count)")
 
             Button {
@@ -229,12 +237,64 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Protocol
+
+    private var logSection: some View {
+        Section {
+            Toggle(isOn: Binding(get: { state.loggingEnabled }, set: { state.setLoggingEnabled($0) })) {
+                Label { Text("Protokoll aufzeichnen") } icon: { SettingsIcon(symbol: "list.bullet.rectangle.fill", color: .brown) }
+            }
+            if state.loggingEnabled {
+                Picker(selection: Binding(get: { state.logLevel }, set: { state.setLogLevel($0) })) {
+                    ForEach(LogLevel.allCases) { Text($0.title).tag($0) }
+                } label: {
+                    Label { Text("Stufe") } icon: { SettingsIcon(symbol: "slider.horizontal.3", color: .gray) }
+                }
+                NavigationLink {
+                    LogAreasView()
+                } label: {
+                    LabeledContent {
+                        Text("\(state.logAreas.count) von \(LogArea.allCases.count)")
+                    } label: {
+                        Label { Text("Bereiche") } icon: { SettingsIcon(symbol: "square.grid.2x2.fill", color: .gray) }
+                    }
+                }
+            }
+        } header: {
+            Text("Protokoll")
+        } footer: {
+            Text(state.loggingEnabled
+                 ? "Aufgezeichnet wird ab der gewählten Stufe: Debug enthält alles, auch jede Anfrage an den Server; Fehler nur Probleme. Das Protokoll findest du im eigenen Tab."
+                 : "Zeichnet Synchronisierung, Hintergrundläufe, Netzwerk und Benachrichtigungen auf, um Probleme nachzuvollziehen. Passwörter und Zugangsdaten werden nie protokolliert.")
+        }
+    }
+
     private var aboutSection: some View {
         Section {
             LabeledContent("Version", value: Bundle.main.versionString)
         } footer: {
             Text("MyHockey Data ist eine inoffizielle App und steht in keiner Verbindung zu den Betreibern von myice.hockey.")
         }
+    }
+}
+
+private struct LogAreasView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(LogArea.allCases) { area in
+                    Toggle(isOn: Binding(get: { state.logAreas.contains(area) }, set: { state.setLogArea(area, enabled: $0) })) {
+                        Label { Text(area.title) } icon: { SettingsIcon(symbol: area.symbol, color: .gray) }
+                    }
+                }
+            } footer: {
+                Text("Nur eingeschaltete Bereiche werden aufgezeichnet.")
+            }
+        }
+        .navigationTitle("Bereiche")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

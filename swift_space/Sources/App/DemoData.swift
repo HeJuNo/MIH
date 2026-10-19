@@ -37,7 +37,7 @@ enum DemoData {
                          detail: decode(##"{"type":"Meisterschaft","is_away":"heim","category":"games","available":1,"available_date":"\##(d1)","departure":"Abfahrt","departure_time":"–","meeting":"Treffpunkt","meeting_time":"16:45","notes":"Weiße Trikots mitnehmen.",\##(roster),"notifications":[{"id_notification":1,"subject":"Aufstellung","message":"Bitte bis Donnerstag zu- oder absagen.","fname":"Thomas","lname":"Berger","date":"\##(d1)"}]}"##)),
             TrackedEntry(event: decode(##"{"id_game":22,"name":"EC Talheim – EHC Musterstadt","agegroup":"U15","place":"Sportzentrum Talheim","color":"#8E24AA","date":"\##(d3)","datetime":"\##(t3)","time_start":"11:15:00","time_end":"13:30:00","available":0,"health_status":3}"##),
                          detail: decode(##"{"type":"Meisterschaft","is_away":"ausw&auml;rts","category":"games","available":0,"departure":"Abfahrt Bus","departure_time":"08:45","meeting":"Treffpunkt","meeting_time":"08:30 Parkplatz Halle",\##(roster)}"##)),
-            TrackedEntry(event: decode(##"{"id_practice":12,"name":"Off-Ice Athletik","agegroup":"U15","place":"Turnhalle Mittelschule","color":"#43A047","date":"\##(d4)","datetime":"\##(t4)","time_start":"17:30:00","time_end":"18:30:00","available":0,"health_status":8,"health_status_notes":"Erkältet"}"##)),
+            TrackedEntry(event: decode(##"{"id_practice":12,"name":"Trockentraining","agegroup":"U15","place":"Turnhalle Mittelschule","color":"#43A047","date":"\##(d4)","datetime":"\##(t4)","time_start":"17:30:00","time_end":"18:30:00","available":0,"health_status":8,"health_status_notes":"Erkältet"}"##)),
         ]
     }
 
@@ -73,6 +73,28 @@ enum DemoData {
             EventChange(entry: entries[2], detectedAt: now.addingTimeInterval(-90000), kind: .departure(label: "Abfahrt Bus", old: "09:00", new: "08:45")),
             EventChange(entry: entries[3], detectedAt: now.addingTimeInterval(-95000), kind: .added),
         ]
+    }
+
+    static var showsLog: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoLog") }
+
+    static func logEntries(now: Date = .now) -> [LogEntry] {
+        let lines: [(TimeInterval, LogLevel, LogArea, String)] = [
+            (-20, .info, .background, "Hintergrundaktualisierung beendet: 2 Änderung(en), 2 Benachrichtigung(en)"),
+            (-21, .info, .notifications, "2 Benachrichtigung(en) gesendet"),
+            (-22, .debug, .changes, "p12 U15 Trockentraining: players(added: [], removed: [\"Lukas Gruber\"])"),
+            (-23, .info, .changes, "Synchronisierung: 2 Änderung(en) erkannt"),
+            (-24, .info, .sync, "Fertig in 3.8 s: 6 Termine, 2 Änderungen, Archiv 3"),
+            (-26, .info, .sync, "Details: 6 von 6 geladen"),
+            (-29, .debug, .network, "/getevent games/21 club=1 HTTP 200, 18342 Bytes, 0.41 s"),
+            (-30, .debug, .network, "/refreshdata club=1 HTTP 200, 40211 Bytes, 0.92 s"),
+            (-31, .info, .sync, "Start: Vereine 1, 2, gespeichert 6 Termine"),
+            (-32, .info, .background, "Hintergrundaktualisierung gestartet"),
+            (-1900, .warning, .background, "Hintergrundaktualisierung: von iOS vorzeitig beendet"),
+            (-1910, .warning, .sync, "Details: 4 von 6 geladen (Rest behält den letzten Stand)"),
+            (-5400, .error, .network, "/refreshdata club=2 fehlgeschlagen nach 30.01 s: Zeitüberschreitung bei der Anforderung."),
+            (-7200, .info, .app, "App gestartet"),
+        ]
+        return lines.map { LogEntry(date: now.addingTimeInterval($0.0), level: $0.1, area: $0.2, message: $0.3) }
     }
 
     private static func decode<T: Decodable>(_ json: String) -> T {

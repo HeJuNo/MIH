@@ -44,6 +44,7 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
         APIBaseURL: $(API_BASE_URL)
-        UIBackgroundModes: [fetch]
+        UIBackgroundModes: [fetch, processing]
         BGTaskSchedulerPermittedIdentifiers:
-          - $(PRODUCT_BUNDLE_IDENTIFIER).refresh
+          - app.myhockeydata.refresh
+          - app.myhockeydata.processing

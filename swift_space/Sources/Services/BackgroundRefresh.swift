@@ -1,33 +1,100 @@
 import BackgroundTasks
 import Foundation
-import OSLog
+import MyIceKit
 
-/// Periodic wake-ups via BGAppRefreshTask. iOS decides the actual timing
-/// (usage patterns, battery, Low Power Mode); `earliestBeginDate` is a lower bound.
+/// Periodic wake-ups. Two task types, both registered at launch (`AppDelegate`):
+/// * app refresh: short (about 30 s). iOS decides how often, based on how much the
+///   app is used, battery and Low Power Mode; `earliestBeginDate` is only a lower bound.
+/// * processing: a longer window iOS grants while the device is idle (often overnight).
+///   This is an extra chance to run, not a replacement for app refresh.
 enum BackgroundRefresh {
-    static var identifier: String { (Bundle.main.bundleIdentifier ?? "com.myhockeydata.app") + ".refresh" }
+    /// Fixed identifiers (not derived from the bundle id), listed in Info.plist.
+    static let refreshID = "app.myhockeydata.refresh"
+    static let processingID = "app.myhockeydata.processing"
 
-    private static let log = Logger(subsystem: "MyHockeyData", category: "background")
+    /// Stop starting new requests well before the system limit so there is time to save and notify.
+    static let refreshBudget: TimeInterval = 18
+    static let processingBudget: TimeInterval = 120
+
+    private static var log: AppLog { AppEnvironment.shared.log }
+
+    /// Must run before the app finishes launching.
+    static func register() {
+        let refresh = BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshID, using: nil) { task in
+            run(task, kind: "Hintergrundaktualisierung", budget: refreshBudget)
+        }
+        let processing = BGTaskScheduler.shared.register(forTaskWithIdentifier: processingID, using: nil) { task in
+            run(task, kind: "Hintergrundwartung", budget: processingBudget)
+        }
+        log(refresh && processing ? .debug : .error, .background,
+            "Registrierung: Aktualisierung \(refresh ? "ok" : "fehlgeschlagen"), Wartung \(processing ? "ok" : "fehlgeschlagen")")
+    }
 
     static func schedule(_ env: AppEnvironment = .shared) {
         guard env.session.loadToken() != nil else {
-            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: identifier)
+            BGTaskScheduler.shared.cancelAllTaskRequests()
+            log(.info, .background, "Nicht angemeldet: keine Hintergrundläufe geplant")
             return
         }
-        let request = BGAppRefreshTaskRequest(identifier: identifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: TimeInterval(max(15, env.settings.refreshMinutes) * 60))
+        let refresh = BGAppRefreshTaskRequest(identifier: refreshID)
+        refresh.earliestBeginDate = Date(timeIntervalSinceNow: TimeInterval(max(15, env.settings.refreshMinutes) * 60))
+        submit(refresh, "Aktualisierung")
+
+        let processing = BGProcessingTaskRequest(identifier: processingID)
+        processing.requiresNetworkConnectivity = true
+        processing.requiresExternalPower = false
+        processing.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 3600)
+        submit(processing, "Wartung")
+    }
+
+    private static func submit(_ request: BGTaskRequest, _ name: String) {
         do {
             try BGTaskScheduler.shared.submit(request)
-            log.info("scheduled refresh, earliest \(request.earliestBeginDate!, privacy: .public)")
+            let at = request.earliestBeginDate?.formatted(date: .omitted, time: .shortened) ?? "-"
+            log(.debug, .background, "\(name) geplant, frühestens \(at)")
         } catch {
-            // Fails in the simulator and when Background App Refresh is off.
-            log.error("could not schedule refresh: \(String(describing: error), privacy: .public)")
+            // Always fails in the simulator, and when Background App Refresh is off.
+            log(.error, .background, "\(name) konnte nicht geplant werden: \(describe(error))")
         }
     }
 
-    /// Body of the SwiftUI `.backgroundTask(.appRefresh)` handler.
-    static func handle() async {
+    private static func run(_ task: BGTask, kind: String, budget: TimeInterval) {
+        log(.info, .background, "\(kind) gestartet")
+        AppEnvironment.shared.settings.lastBackgroundRun = .now
         schedule()   // chain the next wake-up first, in case we are cut short
-        await SyncCoordinator.run(reason: "background")
+
+        let work = Task {
+            let outcome = await SyncCoordinator.run(reason: "background", deadline: Date(timeIntervalSinceNow: budget))
+            await AppState.shared.reloadFromStore()
+            return outcome
+        }
+        task.expirationHandler = {
+            log(.warning, .background, "\(kind): von iOS vorzeitig beendet")
+            work.cancel()
+        }
+        Task {
+            let outcome = await work.value
+            log(.info, .background, "\(kind) beendet: \(outcome.summary)")
+            task.setTaskCompleted(success: outcome.isSuccess)
+        }
+    }
+
+    /// Debug aid: which wake-ups iOS currently has queued.
+    static func logPending() async {
+        let pending = await BGTaskScheduler.shared.pendingTaskRequests()
+        let list = pending.map { r in
+            "\(r.identifier == refreshID ? "Aktualisierung" : "Wartung") ab \(r.earliestBeginDate?.formatted(date: .omitted, time: .shortened) ?? "sofort")"
+        }
+        log(.debug, .background, list.isEmpty ? "Keine Hintergrundläufe vorgemerkt" : "Vorgemerkt: " + list.joined(separator: ", "))
+    }
+
+    private static func describe(_ error: Error) -> String {
+        guard let e = error as? BGTaskScheduler.Error else { return error.localizedDescription }
+        switch e.code {
+        case .unavailable: return "nicht verfügbar (Hintergrundaktualisierung aus oder Simulator)"
+        case .tooManyPendingTaskRequests: return "zu viele vorgemerkte Läufe"
+        case .notPermitted: return "nicht erlaubt (Info.plist)"
+        default: return e.localizedDescription
+        }
     }
 }

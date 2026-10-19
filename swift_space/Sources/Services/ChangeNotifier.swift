@@ -6,7 +6,10 @@ import UserNotifications
 final class ChangeNotifier: Sendable {
     static let eventKeyUserInfo = "eventKey"
     /// Keep a burst (e.g. after a long offline period) from flooding the lock screen.
-    static let maxPerRun = 20
+    static let maxPerRun = 50
+    private let log: AppLog
+
+    init(log: AppLog) { self.log = log }
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
@@ -22,11 +25,19 @@ final class ChangeNotifier: Sendable {
         guard !changes.isEmpty else { return 0 }
         let center = UNUserNotificationCenter.current()
         let status = await center.notificationSettings().authorizationStatus
-        guard status == .authorized || status == .provisional || status == .ephemeral else { return 0 }
+        guard status == .authorized || status == .provisional || status == .ephemeral else {
+            log(.warning, .notifications, "\(changes.count) Änderung(en) nicht gemeldet: Benachrichtigungen sind nicht erlaubt (Status \(status.rawValue))")
+            return 0
+        }
 
         let shown = changes.prefix(Self.maxPerRun)
         for change in shown {
-            try? await center.add(request(for: change))
+            do {
+                try await center.add(request(for: change))
+                log(.debug, .notifications, "Gemeldet: \(ChangeFormatter.eventLabel(change)) – \(ChangeFormatter.text(for: change).headline)")
+            } catch {
+                log(.error, .notifications, "Konnte Benachrichtigung nicht anlegen: \(error.localizedDescription)")
+            }
         }
         let overflow = changes.count - shown.count
         if overflow > 0 {
@@ -36,6 +47,7 @@ final class ChangeNotifier: Sendable {
             content.threadIdentifier = "summary"
             try? await center.add(UNNotificationRequest(identifier: "summary-\(UUID())", content: content, trigger: nil))
         }
+        log(.info, .notifications, "\(shown.count) Benachrichtigung(en) gesendet" + (overflow > 0 ? ", \(overflow) zusammengefasst" : ""))
         return shown.count + (overflow > 0 ? 1 : 0)
     }
 

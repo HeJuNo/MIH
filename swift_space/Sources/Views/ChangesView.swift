@@ -69,7 +69,10 @@ struct ChangeLine: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text(text.headline).font(.footnote.weight(.semibold))
                     Spacer()
-                    Text(change.detectedAt, format: .dateTime.hour().minute())
+                    // The list groups by day; inside a detail the day is needed too.
+                    Text(change.detectedAt, format: showEvent
+                         ? .dateTime.hour().minute()
+                         : .dateTime.day().month(.twoDigits).year(.twoDigits).hour().minute().locale(.de))
                         .font(.caption2).foregroundStyle(.secondary).fixedSize()
                 }
                 if showEvent {

@@ -12,24 +12,27 @@ final class AppEnvironment: Sendable {
     let syncStore: SyncStore
     let engine: SyncEngine
     let notifier: ChangeNotifier
+    let log: AppLog
 
     private init() {
         let session = DefaultSessionStore(keychain: KeychainSecretStore(service: "app.myhockeydata.session"))
         let settings = SettingsStore()
+        let log = AppLog(settings: settings)
         var config = APIConfig()
         if let raw = Bundle.main.object(forInfoDictionaryKey: "APIBaseURL") as? String,
            !raw.isEmpty, let url = URL(string: raw) {
             config.baseURL = url
         }
-        let api = APIClient(config: config, context: SessionContext(session: session))
+        let api = APIClient(config: config, context: SessionContext(session: session), log: log.sink)
         let syncStore = SyncStore()
 
         self.session = session
         self.settings = settings
         self.api = api
         self.syncStore = syncStore
-        self.engine = SyncEngine(api: api, store: syncStore)
-        self.notifier = ChangeNotifier()
+        self.engine = SyncEngine(api: api, store: syncStore, log: log.sink)
+        self.notifier = ChangeNotifier(log: log)
+        self.log = log
     }
 }
 

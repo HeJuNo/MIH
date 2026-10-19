@@ -36,12 +36,15 @@ public final class APIClient: Sendable {
     let config: APIConfig
     let transport: HTTPTransport
     let context: RequestContextProviding
+    let log: LogSink
     let decoder = JSONDecoder()
 
-    public init(config: APIConfig = .init(), transport: HTTPTransport = URLSession.shared, context: RequestContextProviding) {
+    public init(config: APIConfig = .init(), transport: HTTPTransport = URLSession.shared,
+                context: RequestContextProviding, log: LogSink = .none) {
         self.config = config
         self.transport = transport
         self.context = context
+        self.log = log
     }
 
     /// Builds the request exactly like `fetchClient.post`: endpoint fields,
@@ -62,13 +65,28 @@ public final class APIClient: Sendable {
     }
 
     public func send<T: Decodable>(_ endpoint: Endpoint, as type: T.Type = T.self) async throws -> T {
-        let (data, response) = try await transport.data(for: await makeRequest(endpoint))
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError.http(status: http.statusCode)
+        let started = Date()
+        let label = endpoint.logLabel
+        func elapsed() -> String { String(format: "%.2f s", Date().timeIntervalSince(started)) }
+        let data: Data, response: URLResponse
+        do {
+            (data, response) = try await transport.data(for: await makeRequest(endpoint))
+        } catch {
+            let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
+            log(cancelled ? .warning : .error, .network, "\(label) \(cancelled ? "abgebrochen" : "fehlgeschlagen") nach \(elapsed()): \(error.localizedDescription)")
+            throw error
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if !(200..<300).contains(status) {
+            log(.error, .network, "\(label) HTTP \(status) nach \(elapsed())")
+            throw APIError.http(status: status)
         }
         do {
-            return try decoder.decode(T.self, from: JSONNormalizer.normalize(data))
+            let value = try decoder.decode(T.self, from: JSONNormalizer.normalize(data))
+            log(.debug, .network, "\(label) HTTP \(status), \(data.count) Bytes, \(elapsed())")
+            return value
         } catch {
+            log(.error, .network, "\(label) nicht lesbar: \(Self.describe(error))")
             throw APIError.decoding(Self.describe(error))
         }
     }

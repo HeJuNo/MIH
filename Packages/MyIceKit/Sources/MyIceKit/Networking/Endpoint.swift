@@ -80,3 +80,16 @@ public enum Endpoint: Sendable {
         }
     }
 }
+
+extension Endpoint {
+    /// Path plus non-sensitive identifiers, for the diagnostic log. Never contains credentials.
+    var logLabel: String {
+        switch self {
+        case let .refreshData(club): "\(path) club=\(club ?? "-")"
+        case let .getEvent(kind, id, _, club): "\(path) \(kind.rawValue)/\(id) club=\(club ?? "-")"
+        case let .setEvent(kind, id, _, _, _): "\(path) \(kind.rawValue)/\(id)"
+        case let .setAvailability(id, _, _, _, _): "\(path) games/\(id)"
+        default: path
+        }
+    }
+}

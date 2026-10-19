@@ -36,7 +36,13 @@ extension Event {
     }
     var subtitle: String { [agegroup, practicegroup].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ") }
     var kindLabel: String { isGame ? "Spiel" : "Training" }
-    var kindSymbol: String { isGame ? "hockey.puck.fill" : "figure.hockey" }
+    var kindSymbol: String {
+        if isGame { return "hockey.puck.fill" }
+        // Off-ice sessions ("Trockentraining", athletics, strength) get an athlete instead of a hockey player.
+        let n = (name ?? "").lowercased()
+        if ["trocken", "athletik", "kraft", "off-ice", "office", "lauf"].contains(where: n.contains) { return "figure.run" }
+        return "figure.hockey"
+    }
 }
 
 /// Small rounded label used for status and type tags.

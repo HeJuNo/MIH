@@ -6,7 +6,8 @@
 	<string>$(API_BASE_URL)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER).refresh</string>
+		<string>app.myhockeydata.refresh</string>
+		<string>app.myhockeydata.processing</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>de</string>
@@ -31,6 +32,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

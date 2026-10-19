@@ -11,7 +11,7 @@ import UserNotifications
 final class AppState {
     static let shared = AppState()
 
-    enum Tab: Hashable { case schedule, changes, settings }
+    enum Tab: Hashable { case schedule, changes, log, settings }
 
     // Session
     private(set) var user: User?
@@ -38,6 +38,12 @@ final class AppState {
     private(set) var mapProvider: MapProvider = .apple
     private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     private(set) var backgroundRefreshStatus: UIBackgroundRefreshStatus = .available
+    private(set) var lastBackgroundRun: Date?
+
+    // Protocol
+    private(set) var loggingEnabled = false
+    private(set) var logLevel: LogLevel = .info
+    private(set) var logAreas: Set<LogArea> = Set(LogArea.allCases)
 
     // Navigation
     var selectedTab: Tab = .schedule
@@ -69,8 +75,10 @@ final class AppState {
                     schedulePath.append(archive[i].id)
                 }
             }
+            loggingEnabled = DemoData.showsLog
+            logLevel = .debug
             if let tab = UserDefaults.standard.string(forKey: "demoTab") {
-                selectedTab = tab == "changes" ? .changes : tab == "settings" ? .settings : .schedule
+                selectedTab = tab == "changes" ? .changes : tab == "settings" ? .settings : tab == "log" ? .log : .schedule
             }
             return
         }
@@ -94,6 +102,8 @@ final class AppState {
         await refreshSystemStatus()
         await reloadFromStore()
         guard isLoggedIn else { return }
+        env.log(.debug, .app, "App im Vordergrund, letzte Synchronisierung \(lastSync?.formatted(date: .abbreviated, time: .shortened) ?? "nie")")
+        await BackgroundRefresh.logPending()
         // Avoid hammering the API when quickly switching apps.
         if (lastSync.map { Date().timeIntervalSince($0) > 5 * 60 }) ?? true {
             await refresh(reason: "foreground")
@@ -107,6 +117,7 @@ final class AppState {
         changeLog = state.changeLog
         lastSync = state.lastSync
         lastError = state.lastError
+        lastBackgroundRun = env.settings.lastBackgroundRun
         unseenChanges = changeLog.filter { !seenChangeIDs.contains($0.id) }.count
     }
 
@@ -150,6 +161,7 @@ final class AppState {
         guard var current = user else { return }
         isImportingHistory = true
         historyMessage = nil
+        env.log(.info, .history, "Vergangene Termine: Import gestartet")
         defer { isImportingHistory = false }
         do {
             // Sessions from older app versions didn't store the season: refresh the profile once.
@@ -177,12 +189,17 @@ final class AppState {
             await reloadFromStore()
             let added = archive.count - before
             historyMessage = added > 0 ? "\(added) vergangene Termine geladen." : "Alle vergangenen Termine sind bereits vorhanden."
+            let perClub = Dictionary(grouping: past, by: { $0.clubID ?? "-" }).map { "\($0.key): \($0.value.count)" }.sorted()
+            env.log(.info, .history, "Web lieferte \(past.count) vergangene Termine (\(perClub.joined(separator: ", "))), neu im Archiv: \(added)")
         } catch WebHistoryClient.WebError.loginFailed {
             historyMessage = "Anmeldung an der Web-Version fehlgeschlagen. Passwort prüfen."
         } catch APIError.rejected(let message) {
             historyMessage = message ?? "Anmeldung fehlgeschlagen."
         } catch {
             historyMessage = "Laden fehlgeschlagen: \(error.localizedDescription)"
+        }
+        if let historyMessage, !historyMessage.hasSuffix("geladen."), !historyMessage.hasPrefix("Alle") {
+            env.log(.error, .history, historyMessage)
         }
     }
 
@@ -218,7 +235,15 @@ final class AppState {
     func submitStatus(for entry: TrackedEntry, _ submission: StatusRules.Submission) async throws {
         guard let player = user?.info.idPlayer else { return }
         let endpoint = try StatusRules.endpoint(for: [entry.event], playerID: player, submission: submission)
-        try await env.api.perform(endpoint)
+        do {
+            try await env.api.perform(endpoint)
+        } catch {
+            env.log(.error, .status, "Status für \(entry.id) nicht gespeichert: \(error)")
+            throw error
+        }
+        env.log(.info, .status, "Status für \(entry.id) gesetzt: \(submission.status.map { StatusText.health($0.rawValue) } ?? "-")"
+                + (submission.attendance.map { ", Anwesenheit \(StatusText.availability($0))" } ?? "")
+                + ((submission.notes ?? "").isEmpty ? "" : ", mit Notiz"))
         // Own change → baseline, so no notification echoes it back.
         await env.engine.applyLocalStatus(eventKey: entry.id, submission: submission)
         await reloadFromStore()
@@ -277,9 +302,7 @@ final class AppState {
     }
 
     func clearChangeLog() async {
-        var state = await env.syncStore.load()
-        state.changeLog = []
-        await env.syncStore.save(state)
+        await env.engine.clearChangeLog()
         await reloadFromStore()
     }
 
@@ -309,7 +332,42 @@ final class AppState {
         disabledCategories = env.settings.disabledCategories
         refreshMinutes = env.settings.refreshMinutes
         mapProvider = env.settings.mapProvider
+        loggingEnabled = env.settings.loggingEnabled
+        logLevel = env.settings.logLevel
+        logAreas = env.settings.logAreas
     }
+
+    // MARK: Protocol
+
+    func setLoggingEnabled(_ on: Bool) {
+        if on {
+            env.settings.loggingEnabled = true
+            env.log(.info, .app, "Protokoll eingeschaltet (ab \(logLevel.title))")
+        } else {
+            env.log(.info, .app, "Protokoll ausgeschaltet")
+            env.settings.loggingEnabled = false
+            if selectedTab == .log { selectedTab = .settings }
+        }
+        loggingEnabled = on
+    }
+
+    func setLogLevel(_ level: LogLevel) {
+        logLevel = level
+        env.settings.logLevel = level
+    }
+
+    func setLogArea(_ area: LogArea, enabled: Bool) {
+        if enabled { logAreas.insert(area) } else { logAreas.remove(area) }
+        env.settings.logAreas = logAreas
+    }
+
+    func logEntries() async -> [LogEntry] {
+        #if DEBUG
+        if DemoData.isEnabled { return DemoData.logEntries() }
+        #endif
+        return await env.log.entries()
+    }
+    func clearLog() async { await env.log.clear() }
 
     func setMapProvider(_ p: MapProvider) {
         mapProvider = p
@@ -317,7 +375,18 @@ final class AppState {
     }
 
     private func refreshSystemStatus() async {
-        notificationStatus = await env.notifier.authorizationStatus()
-        backgroundRefreshStatus = UIApplication.shared.backgroundRefreshStatus
+        let refresh = UIApplication.shared.backgroundRefreshStatus
+        let notifications = await env.notifier.authorizationStatus()
+        if refresh != backgroundRefreshStatus || notifications != notificationStatus || !statusLogged {
+            statusLogged = true
+            env.log(refresh == .available ? .info : .warning, .background,
+                    "Hintergrundaktualisierung: \(refresh == .available ? "erlaubt" : refresh == .denied ? "in iOS ausgeschaltet" : "eingeschränkt")")
+            env.log(notifications == .authorized ? .info : .warning, .notifications,
+                    "Benachrichtigungen: \(notifications == .authorized ? "erlaubt" : notifications == .denied ? "abgelehnt" : "nicht erlaubt (\(notifications.rawValue))")")
+        }
+        backgroundRefreshStatus = refresh
+        notificationStatus = notifications
     }
+
+    private var statusLogged = false
 }

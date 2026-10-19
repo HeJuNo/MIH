@@ -8,7 +8,7 @@ final class SettingsStore: @unchecked Sendable {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        defaults.register(defaults: [Key.refreshMinutes: 30])
+        defaults.register(defaults: [Key.refreshMinutes: 30, Key.logLevel: LogLevel.info.rawValue])
     }
 
     private enum Key {
@@ -16,6 +16,38 @@ final class SettingsStore: @unchecked Sendable {
         static let disabledCategories = "disabledChangeCategories"
         static let refreshMinutes = "backgroundRefreshMinutes"
         static let mapProvider = "mapProvider"
+        static let lastBackgroundRun = "lastBackgroundRun"
+        static let loggingEnabled = "loggingEnabled"
+        static let logLevel = "logLevel"
+        static let disabledLogAreas = "disabledLogAreas"
+    }
+
+    /// When iOS last woke the app for a background run (shown in the settings).
+    var lastBackgroundRun: Date? {
+        get { defaults.object(forKey: Key.lastBackgroundRun) as? Date }
+        set { defaults.set(newValue, forKey: Key.lastBackgroundRun) }
+    }
+
+    // MARK: Protocol ("Protokoll" tab)
+
+    var loggingEnabled: Bool {
+        get { defaults.bool(forKey: Key.loggingEnabled) }
+        set { defaults.set(newValue, forKey: Key.loggingEnabled) }
+    }
+
+    /// Lowest level that is recorded.
+    var logLevel: LogLevel {
+        get { LogLevel(rawValue: defaults.integer(forKey: Key.logLevel)) ?? .info }
+        set { defaults.set(newValue.rawValue, forKey: Key.logLevel) }
+    }
+
+    /// Stored as the disabled set so areas added later are on by default.
+    var logAreas: Set<LogArea> {
+        get {
+            let off = Set((defaults.stringArray(forKey: Key.disabledLogAreas) ?? []).compactMap(LogArea.init(rawValue:)))
+            return Set(LogArea.allCases).subtracting(off)
+        }
+        set { defaults.set(Set(LogArea.allCases).subtracting(newValue).map(\.rawValue).sorted(), forKey: Key.disabledLogAreas) }
     }
 
     var mapProvider: MapProvider {

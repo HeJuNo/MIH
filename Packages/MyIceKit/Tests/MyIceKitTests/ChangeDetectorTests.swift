@@ -83,7 +83,14 @@ final class SyncEngineTests: XCTestCase {
     /// Serves canned JSON per path + id_club and records requests.
     final class FakeTransport: HTTPTransport, @unchecked Sendable {
         var responses: [String: String] = [:]
+        var delays: [String: UInt64] = [:]
+        var statusCodes: [String: Int] = [:]
         func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+            let path = request.url!.lastPathComponent
+            if let ns = delays[path] { try await Task.sleep(nanoseconds: ns) }
+            if let code = statusCodes[path] {
+                return (Data(), HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!)
+            }
             let body = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
             let club = body.range(of: #"name="id_club"\r\n\r\n([^\r]*)"#, options: .regularExpression)
                 .map { String(body[$0]).components(separatedBy: "\r\n\r\n").last ?? "" } ?? ""
@@ -138,5 +145,64 @@ final class SyncEngineTests: XCTestCase {
         transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":2,"datetime":"2026-10-20T17:00:00","date":"2026-10-20","health_status":8,"health_status_notes":"Fieber","available":0}]}"#
         let r = try await engine.sync(clubIDs: ["86"], playerID: 1, now: now)
         XCTAssertTrue(r.changes.isEmpty, "\(r.changes.map(\.kind))")
+    }
+
+    /// A day within the detail horizon, as `yyyy-MM-dd`.
+    let soon: String = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: Date().addingTimeInterval(5 * 24 * 3600))
+    }()
+
+    /// A failing/slow sync must not overwrite a change the detail screen detected meanwhile.
+    func testDetailChangeSurvivesConcurrentFailingSync() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = SyncStore(directory: dir)
+        let transport = FakeTransport()
+        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let row = #"{"app_data":[{"id_practice":13,"name":"Spezial","datetime":"\#(soon)T17:30:00","date":"\#(soon)"}]}"#
+        transport.responses["refreshdata"] = row
+        transport.responses["getevent"] = #"{"eventData":{"convocation":{"available":[{"fname":"Adrian","lname":"S"},{"fname":"Jonas","lname":"O"}]}}}"#
+        _ = try await engine.sync(clubIDs: ["86"], playerID: 1)
+
+        transport.delays["refreshdata"] = 300_000_000
+        transport.statusCodes["refreshdata"] = 500
+        transport.responses["getevent"] = #"{"eventData":{"convocation":{"available":[{"fname":"Jonas","lname":"O"}]}}}"#
+        let failing = Task { try await engine.sync(clubIDs: ["86"], playerID: 1) }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let entry = await store.load().entries[0]
+        _ = try await engine.refreshDetail(for: entry, playerID: 1)
+        _ = try? await failing.value
+
+        let state = await store.load()
+        XCTAssertEqual(state.changeLog.map(\.kind), [.players(added: [], removed: ["Adrian S"])])
+        XCTAssertEqual(state.entries[0].detail?.convocation?.available?.count, 1)
+    }
+
+    func testEveryChangedEventGetsItsOwnEntry() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = SyncStore(directory: dir)
+        let transport = FakeTransport()
+        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":1,"datetime":"\#(soon)T17:30:00","date":"\#(soon)","place":"A"},{"id_practice":2,"datetime":"\#(soon)T17:30:00","date":"\#(soon)","place":"A"},{"id_game":3,"datetime":"\#(soon)T12:00:00","date":"\#(soon)","place":"A"}]}"#
+        _ = try await engine.sync(clubIDs: ["86"], playerID: 1)
+        transport.responses["refreshdata"] = transport.responses["refreshdata"]!.replacingOccurrences(of: "\"A\"", with: "\"B\"")
+        let r = try await engine.sync(clubIDs: ["86"], playerID: 1)
+        XCTAssertEqual(Set(r.changes.map(\.eventKey)), ["p1", "p2", "g3"])
+        let log = await store.load().changeLog
+        XCTAssertEqual(log.count, 3)
+    }
+
+    func testDeadlineSkipsDetailsButKeepsOldOnes() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = SyncStore(directory: dir)
+        let transport = FakeTransport()
+        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":1,"datetime":"\#(soon)T17:30:00","date":"\#(soon)"}]}"#
+        transport.responses["getevent"] = #"{"eventData":{"notes":"alt"}}"#
+        _ = try await engine.sync(clubIDs: ["86"], playerID: 1)
+        transport.responses["getevent"] = #"{"eventData":{"notes":"neu"}}"#
+        let r = try await engine.sync(clubIDs: ["86"], playerID: 1, deadline: .distantPast)
+        XCTAssertEqual(r.entries.first?.detail?.notes, "alt")
+        XCTAssertTrue(r.changes.isEmpty)
     }
 }
