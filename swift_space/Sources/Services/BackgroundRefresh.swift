@@ -11,6 +11,9 @@ enum BackgroundRefresh {
     /// Fixed identifiers (not derived from the bundle id), listed in Info.plist.
     static let refreshID = "app.myhockeydata.refresh"
     static let processingID = "app.myhockeydata.processing"
+    /// Bundle-derived identifier of earlier builds. No longer in Info.plist, so iOS never runs it,
+    /// but a leftover request still occupies the app's single app-refresh slot.
+    static let legacyRefreshID = "com.myhockeydata.app.refresh"
 
     /// Stop starting new requests well before the system limit so there is time to save and notify.
     static let refreshBudget: TimeInterval = 18
@@ -36,15 +39,22 @@ enum BackgroundRefresh {
             log(.info, .background, "Nicht angemeldet: keine Hintergrundläufe geplant")
             return
         }
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: legacyRefreshID)
+
         let refresh = BGAppRefreshTaskRequest(identifier: refreshID)
         refresh.earliestBeginDate = Date(timeIntervalSinceNow: TimeInterval(max(15, env.settings.refreshMinutes) * 60))
         submit(refresh, "Aktualisierung")
 
-        let processing = BGProcessingTaskRequest(identifier: processingID)
-        processing.requiresNetworkConnectivity = true
-        processing.requiresExternalPower = false
-        processing.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 3600)
-        submit(processing, "Wartung")
+        // Resubmitting replaces the queued request, so doing it on every trip to the background
+        // pushed the processing window 2 h out each time and it never came due during the day.
+        BGTaskScheduler.shared.getPendingTaskRequests { pending in
+            guard !pending.contains(where: { $0.identifier == processingID }) else { return }
+            let processing = BGProcessingTaskRequest(identifier: processingID)
+            processing.requiresNetworkConnectivity = true
+            processing.requiresExternalPower = false
+            processing.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 3600)
+            submit(processing, "Wartung")
+        }
     }
 
     private static func submit(_ request: BGTaskRequest, _ name: String) {
@@ -83,7 +93,7 @@ enum BackgroundRefresh {
     static func logPending() async {
         let pending = await BGTaskScheduler.shared.pendingTaskRequests()
         let list = pending.map { r in
-            "\(r.identifier == refreshID ? "Aktualisierung" : "Wartung") ab \(r.earliestBeginDate?.formatted(date: .omitted, time: .shortened) ?? "sofort")"
+            "\(r.identifier == refreshID ? "Aktualisierung" : r.identifier == processingID ? "Wartung" : r.identifier) ab \(r.earliestBeginDate?.formatted(date: .omitted, time: .shortened) ?? "sofort")"
         }
         log(.debug, .background, list.isEmpty ? "Keine Hintergrundläufe vorgemerkt" : "Vorgemerkt: " + list.joined(separator: ", "))
     }
