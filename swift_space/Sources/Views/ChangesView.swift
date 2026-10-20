@@ -4,6 +4,7 @@ import SwiftUI
 /// Timeline of every detected change, newest first.
 struct ChangesView: View {
     @Environment(AppState.self) private var state
+    @State private var confirmClear = false
 
     var body: some View {
         NavigationStack {
@@ -14,27 +15,39 @@ struct ChangesView: View {
                         .listRowBackground(Color.clear)
                 }
                 ForEach(groupedByDay, id: \.0) { day, changes in
-                    Section(dayTitle(day)) {
+                    Section {
                         ForEach(changes) { change in
+                            let available = state.entry(for: change.eventKey) != nil
                             Button { state.open(eventKey: change.eventKey) } label: {
                                 ChangeLine(change: change, showEvent: true)
+                                    .opacity(available ? 1 : 0.5)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(state.entry(for: change.eventKey) == nil)
+                            .foregroundStyle(.primary)
+                            .disabled(!available)
+                            .accessibilityHint(available ? "Öffnet den Termin" : "Termin nicht mehr vorhanden")
                         }
+                    } header: {
+                        Text(dayTitle(day)).font(.headline).foregroundStyle(.primary).textCase(nil)
                     }
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Änderungen")
             .refreshable { await state.refresh() }
             .toolbar {
                 if !state.changeLog.isEmpty {
                     Menu {
-                        Button("Verlauf löschen", systemImage: "trash", role: .destructive) {
-                            Task { await state.clearChangeLog() }
-                        }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                        Button("Verlauf löschen", systemImage: "trash", role: .destructive) { confirmClear = true }
+                    } label: { Image(systemName: "ellipsis") }
+                    .accessibilityLabel("Mehr")
                 }
+            }
+            .confirmationDialog("Verlauf löschen?", isPresented: $confirmClear, titleVisibility: .visible) {
+                Button("Alle Änderungen löschen", role: .destructive) {
+                    Task { await state.clearChangeLog() }
+                }
+            } message: {
+                Text("Das kann nicht rückgängig gemacht werden.")
             }
             .onAppear { state.markChangesSeen() }
             .onChange(of: state.changeLog.count) { state.markChangesSeen() }
@@ -60,35 +73,29 @@ struct ChangeLine: View {
     var body: some View {
         let text = ChangeFormatter.text(for: change)
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: text.symbol)
-                .font(.footnote.weight(.semibold))
-                .frame(width: 30, height: 30)
-                .background(color.gradient, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .foregroundStyle(.white)
+            SettingsIcon(symbol: text.symbol, color: color)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(text.headline).font(.footnote.weight(.semibold))
+                    Text(text.headline).font(.body.weight(.semibold))
                     Spacer()
                     // The list groups by day; inside a detail the day is needed too.
                     Text(change.detectedAt, format: showEvent
                          ? .dateTime.hour().minute()
                          : .dateTime.day().month(.twoDigits).year(.twoDigits).hour().minute().locale(.de))
-                        .font(.caption2).foregroundStyle(.secondary).fixedSize()
+                        .font(.footnote.monospacedDigit()).foregroundStyle(.secondary).fixedSize()
                 }
                 if showEvent {
-                    Text(ChangeFormatter.eventLabel(change))
-                        .font(.caption.weight(.semibold)).foregroundStyle(.tint).lineLimit(1)
-                    if let when = ChangeFormatter.eventWhen(change) {
-                        Label(when, systemImage: "calendar")
-                            .font(.caption2).foregroundStyle(.secondary).labelStyle(.titleAndIcon)
-                    }
+                    Text([ChangeFormatter.eventLabel(change), ChangeFormatter.eventWhen(change)]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .font(.subheadline).foregroundStyle(.tint).lineLimit(2)
                 }
                 if !text.detail.isEmpty {
-                    Text(text.detail).font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                    Text(text.detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(4)
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 
     private var color: Color {

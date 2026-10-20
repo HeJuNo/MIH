@@ -10,34 +10,37 @@ struct ScheduleView: View {
     var body: some View {
         @Bindable var state = state
         NavigationStack(path: $state.schedulePath) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
-                    let upcoming = filtered(state.entries)
-                    if !state.archive.isEmpty || state.isImportingHistory {
+            List {
+                let upcoming = filtered(state.entries)
+
+                FilterBar(filter: $filter, club: $club)
+
+                if filter == .all, club == nil, let next = upcoming.first(where: { ($0.event.start ?? .distantPast) > .now }) {
+                    Section {
+                        Button { state.schedulePath.append(next.id) } label: { NextUpCard(entry: next) }
+                            .buttonStyle(PressableStyle())
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                }
+
+                if !state.archive.isEmpty || state.isImportingHistory {
+                    Section {
                         NavigationLink(value: PastEventsView.route) {
                             PastLinkLabel(count: filtered(state.archive).count, importing: state.isImportingHistory)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal)
                     }
-                    if filter == .all, club == nil, let next = upcoming.first(where: { ($0.event.start ?? .distantPast) > .now }) {
-                        NavigationLink(value: next.id) { NextUpCard(entry: next) }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal)
-                    }
-
-                    FilterBar(filter: $filter, club: $club)
-
-                    if upcoming.isEmpty && !state.isSyncing {
-                        EmptyStateView(symbol: "calendar.badge.exclamationmark", title: "Keine Termine",
-                                       message: "Sobald dein Verein Spiele oder Trainings einträgt, erscheinen sie hier.")
-                    }
-                    EntrySections(entries: upcoming)
-
                 }
-                .padding(.bottom, 24)
+
+                if upcoming.isEmpty && !state.isSyncing {
+                    EmptyStateView(symbol: "calendar", title: "Keine Termine",
+                                   message: "Sobald dein Verein Spiele oder Trainings einträgt, erscheinen sie hier.")
+                        .listRowBackground(Color.clear)
+                }
+                EntrySections(entries: upcoming)
             }
-            .background(Color(.systemGroupedBackground))
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(.compact)
             .navigationTitle("Spiele & Trainings")
             .navigationDestination(for: String.self) { key in
                 if key == PastEventsView.route {
@@ -53,6 +56,8 @@ struct ScheduleView: View {
             .overlay {
                 if state.entries.isEmpty && state.isSyncing { ProgressView("Lade Termine…") }
             }
+            .animation(Theme.spring, value: filter)
+            .animation(Theme.spring, value: club)
         }
     }
 
@@ -73,7 +78,8 @@ enum KindFilter: String, CaseIterable, Identifiable {
     }
 }
 
-/// Kind filter + club chips (only when the player has more than one club).
+/// Kind filter + club chips (only when the player has more than one club). Lives inside a List
+/// as a row without background.
 struct FilterBar: View {
     @Environment(AppState.self) private var state
     @Binding var filter: KindFilter
@@ -85,7 +91,6 @@ struct FilterBar: View {
                 ForEach(KindFilter.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
-            .padding(.horizontal)
 
             if state.hasMultipleClubs {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -95,10 +100,13 @@ struct FilterBar: View {
                             chip(c.clubName ?? c.id, logo: c.clubLogo, selected: club == c.id) { club = c.id }
                         }
                     }
-                    .padding(.horizontal)
                 }
+                .scrollClipDisabled()
             }
         }
+        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+        .listRowBackground(Color.clear)
+        .sensoryFeedback(.selection, trigger: club)
     }
 
     private func chip(_ title: String, logo: URL?, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -107,18 +115,18 @@ struct FilterBar: View {
                 if let logo {
                     AsyncImage(url: logo) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
                         .frame(width: 16, height: 16)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                 }
                 Text(title).lineLimit(1)
             }
-            .font(.footnote.weight(.semibold))
-            .padding(.horizontal, 12).padding(.vertical, 7)
+            .font(.subheadline.weight(selected ? .semibold : .regular))
+            .padding(.horizontal, 14).padding(.vertical, 7)
             .foregroundStyle(selected ? Color.white : Color.primary)
-            .background(selected ? AnyShapeStyle(Theme.accent.gradient) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
+            .background(selected ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
                         in: Capsule())
-            .overlay(Capsule().strokeBorder(Color(.separator).opacity(selected ? 0 : 0.6), lineWidth: 0.5))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -133,16 +141,13 @@ struct EntrySections: View {
         let groups = EventDates.groupedByDay(entries.map(\.event))
         ForEach(newestFirst ? groups.reversed() : groups, id: \.day) { group in
             Section {
-                VStack(spacing: 8) {
-                    ForEach(group.events) { event in
-                        if let entry = byKey[event.id] {
-                            NavigationLink(value: entry.id) { EventRow(entry: entry) }
-                                .buttonStyle(.plain)
-                                .contextMenu { NotifyMenuItem(entry: entry) }
-                        }
+                ForEach(group.events) { event in
+                    if let entry = byKey[event.id] {
+                        NavigationLink(value: entry.id) { EventRow(entry: entry) }
+                            .contextMenu { NotifyMenuItem(entry: entry) }
+                            .swipeActions(edge: .trailing) { NotifySwipeAction(entry: entry) }
                     }
                 }
-                .padding(.horizontal)
             } header: {
                 DayHeader(day: group.day)
             }
@@ -163,6 +168,20 @@ struct NotifyMenuItem: View {
     }
 }
 
+private struct NotifySwipeAction: View {
+    @Environment(AppState.self) private var state
+    let entry: TrackedEntry
+    var body: some View {
+        let on = state.isNotifying(entry.id)
+        Button {
+            state.setNotifying(!on, for: entry.id)
+        } label: {
+            Label(on ? "Stumm" : "Melden", systemImage: on ? "bell.slash.fill" : "bell.fill")
+        }
+        .tint(on ? .gray : Theme.accent)
+    }
+}
+
 /// History of the current season: local archive + web import.
 struct PastEventsView: View {
     static let route = "__past__"
@@ -172,21 +191,22 @@ struct PastEventsView: View {
 
     var body: some View {
         let past = state.archive.filter { filter.matches($0.event) && (club == nil || $0.clubID == club) }
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16, pinnedViews: [.sectionHeaders]) {
-                FilterBar(filter: $filter, club: $club)
-                if past.isEmpty {
-                    EmptyStateView(symbol: "clock.arrow.circlepath", title: "Noch keine vergangenen Termine",
-                                   message: state.isImportingHistory ? "Die Saison wird gerade geladen…"
-                                       : "Vergangene Termine werden hier gesammelt.")
-                }
-                EntrySections(entries: past, newestFirst: true)
+        List {
+            FilterBar(filter: $filter, club: $club)
+            if past.isEmpty {
+                EmptyStateView(symbol: "clock.arrow.circlepath", title: "Noch keine vergangenen Termine",
+                               message: state.isImportingHistory ? "Die Saison wird gerade geladen…"
+                                   : "Vergangene Termine werden hier gesammelt.")
+                    .listRowBackground(Color.clear)
             }
-            .padding(.bottom, 24)
+            EntrySections(entries: past, newestFirst: true)
         }
-        .background(Color(.systemGroupedBackground))
+        .listStyle(.insetGrouped)
+        .listSectionSpacing(.compact)
         .navigationTitle("Vergangene Termine")
         .navigationBarTitleDisplayMode(.inline)
+        .animation(Theme.spring, value: filter)
+        .animation(Theme.spring, value: club)
     }
 }
 
@@ -195,21 +215,15 @@ private struct PastLinkLabel: View {
     let importing: Bool
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.subheadline.weight(.semibold))
-                .frame(width: 32, height: 32)
-                .background(Theme.accent.opacity(0.15), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .foregroundStyle(Theme.accent)
+            SettingsIcon(symbol: "clock.arrow.circlepath", color: .indigo)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Vergangene Termine").font(.subheadline.weight(.semibold))
+                Text("Vergangene Termine")
                 Text(importing ? "Saison wird geladen…" : "\(count) Einträge in dieser Saison")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             Spacer()
-            if importing { ProgressView() } else { Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+            if importing { ProgressView() }
         }
-        .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -217,182 +231,186 @@ private struct DayHeader: View {
     let day: Date
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(day.formatted(.dateTime.weekday(.wide).locale(.de)))
-                .font(.footnote.weight(.bold))
-            Text(day.formatted(.dateTime.day().month(.wide).year().locale(.de)))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Text(day.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de)))
+                .font(.headline)
+                .foregroundStyle(.primary)
             Spacer()
-            if Calendar.current.isDateInToday(day) {
-                Pill(text: "Heute", color: Theme.accent)
-            } else if Calendar.current.isDateInTomorrow(day) {
-                Pill(text: "Morgen", color: Theme.accent, filled: false)
+            if let relative {
+                Text(relative)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 6)
-        .background(.bar)
+        .textCase(nil)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var relative: String? {
+        if Calendar.current.isDateInToday(day) { return "Heute" }
+        if Calendar.current.isDateInTomorrow(day) { return "Morgen" }
+        if Calendar.current.isDateInYesterday(day) { return "Gestern" }
+        return nil
     }
 }
 
-/// Large hero card for the next upcoming event.
+/// Hero for the next upcoming event: the one colored surface on the screen.
 private struct NextUpCard: View {
     let entry: TrackedEntry
     private var event: Event { entry.event }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Als Nächstes", systemImage: "sparkles")
-                    .font(.caption2.weight(.bold)).textCase(.uppercase)
-                    .foregroundStyle(.white.opacity(0.8))
-                Spacer()
-                Pill(text: event.kindLabel, symbol: event.kindSymbol, color: .white.opacity(0.22))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                Image(systemName: event.kindSymbol)
+                Text("Als Nächstes · \(event.kindLabel)")
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(event.name ?? "Termin").font(.title3.weight(.bold)).foregroundStyle(.white)
-                    .lineLimit(2).minimumScaleFactor(0.85)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.75))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.name ?? "Termin")
+                    .font(.title2.weight(.bold))
+                    .lineLimit(3)
                 if !event.subtitle.isEmpty {
-                    Text(event.subtitle).font(.footnote).foregroundStyle(.white.opacity(0.75))
+                    Text(event.subtitle).font(.subheadline).foregroundStyle(.white.opacity(0.75))
                 }
             }
-            HStack(alignment: .bottom, spacing: 12) {
-                if let start = event.start {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(start.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated).locale(.de)))
-                            .font(.headline.monospacedDigit())
-                            .lineLimit(1)
-                            .fixedSize()
-                        Text(start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute().locale(.de)))
-                            .font(.caption)
-                            .opacity(0.8)
-                            .lineLimit(1)
-                            .fixedSize()
-                    }
-                }
-                Spacer(minLength: 8)
-                if let place = event.place, !place.isEmpty {
-                    Label(place, systemImage: "mappin.and.ellipse")
-                        .font(.caption.weight(.medium))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.trailing)
+
+            if let start = event.start {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(start.formatted(.relative(presentation: .named, unitsStyle: .wide).locale(.de)))
+                        .font(.headline)
+                    Spacer(minLength: 8)
+                    Text(start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute().locale(.de)))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.75))
                 }
             }
-            .foregroundStyle(.white)
-        }
-        .padding(16)
-        .background {
-            ZStack {
-                Theme.heroGradient
-                event.tint.opacity(0.35).blendMode(.plusLighter)
-                Image(systemName: "hockey.puck.fill")
-                    .font(.system(size: 130))
-                    .foregroundStyle(.white.opacity(0.06))
-                    .rotationEffect(.degrees(-12))
-                    .offset(x: 120, y: 30)
+
+            if let place = event.place, !place.isEmpty {
+                Label(place, systemImage: "mappin.and.ellipse")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .lineLimit(2)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .shadow(color: .black.opacity(0.25), radius: 14, y: 8)
+        .foregroundStyle(.white)
+        .multilineTextAlignment(.leading)
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .heroBackground(event.tint)
+        .accessibilityElement(children: .combine)
     }
 }
 
 struct EventRow: View {
     @Environment(AppState.self) private var state
+    @Environment(\.dynamicTypeSize) private var typeSize
     let entry: TrackedEntry
     private var event: Event { entry.event }
     private var isPast: Bool { (event.start ?? .distantFuture) < .now }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .trailing, spacing: 1) {
-                let start = EventDates.shortTime(event.timeStart)
-                Text(event.timeRange.isEmpty ? "–:–" : start)
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                if let end = event.displayEnd {
-                    Text(end)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .lineLimit(1)
-            .fixedSize()
-            .frame(minWidth: 42, alignment: .trailing)
-            .padding(.top, 2)
-
-            RoundedRectangle(cornerRadius: 2)
-                .fill(event.tint.gradient)
-                .frame(width: 4)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 5) {
-                    Image(systemName: event.kindSymbol).foregroundStyle(event.tint)
-                    Text(event.subtitle.isEmpty ? event.kindLabel : event.subtitle)
-                        .lineLimit(1)
-                    if state.hasMultipleClubs, let club = state.clubName(entry.clubID) {
-                        Text("· \(club)").lineLimit(1).foregroundStyle(.tertiary)
-                    }
-                }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-
-                Text(event.name ?? "Termin")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
-
-                if let place = event.place, !place.isEmpty {
-                    Label(place, systemImage: "mappin.and.ellipse")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                HStack(spacing: 6) {
-                    StatusPill(event: event)
-                    if let notes = entry.detail?.notes ?? event.eventNotes, !PlainText.from(html: notes).isEmpty {
-                        Image(systemName: "note.text").foregroundStyle(.secondary)
-                    }
-                    if (event.hasNotifications ?? 0) > 0 {
-                        Image(systemName: "envelope.badge.fill").foregroundStyle(Theme.alert)
-                    }
-                    Spacer()
-                    if !isPast {
-                        Image(systemName: state.isNotifying(entry.id) ? "bell.fill" : "bell.slash")
-                            .foregroundStyle(state.isNotifying(entry.id) ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.tertiary))
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                }
-                .font(.caption)
-                .padding(.top, 1)
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+                                                  : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+        layout {
+            time
+            HStack(alignment: .top, spacing: 12) {
+                Capsule()
+                    .fill(event.tint)
+                    .frame(width: 4)
+                details
             }
         }
-        .padding(12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(.separator).opacity(0.35), lineWidth: 0.5)
-        )
-        .opacity(isPast && entry.archivedAt == nil ? 0.6 : 1)
-        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 4)
+        .opacity(isPast && entry.archivedAt == nil ? 0.55 : 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var time: some View {
+        VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 2) {
+            Text(event.timeRange.isEmpty ? "–:–" : EventDates.shortTime(event.timeStart))
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+            if let end = event.displayEnd {
+                Text(end)
+                    .font(.footnote.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .fixedSize()
+        .frame(minWidth: typeSize.isAccessibilitySize ? nil : 44, alignment: .trailing)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(event.name ?? "Termin")
+                .font(.body.weight(.semibold))
+                .lineLimit(2)
+
+            Text(meta)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            HStack(spacing: 8) {
+                StatusPill(event: event)
+                if let notes = entry.detail?.notes ?? event.eventNotes, !PlainText.from(html: notes).isEmpty {
+                    Image(systemName: "note.text").foregroundStyle(.secondary)
+                }
+                if (event.hasNotifications ?? 0) > 0 {
+                    Image(systemName: "envelope.badge.fill").foregroundStyle(Theme.alert)
+                }
+                Spacer(minLength: 0)
+                // Only the exception is shown; a bell on every row is noise.
+                if !isPast && !state.isNotifying(entry.id) {
+                    Image(systemName: "bell.slash.fill").foregroundStyle(.tertiary)
+                }
+            }
+            .font(.footnote)
+            .padding(.top, 3)
+        }
+    }
+
+    /// "U15 · Gruppe A · Eishalle": one quiet line instead of three.
+    private var meta: String {
+        var parts = [event.subtitle.isEmpty ? event.kindLabel : event.subtitle]
+        if state.hasMultipleClubs, let club = state.clubName(entry.clubID) { parts.append(club) }
+        if let place = event.place, !place.isEmpty { parts.append(place) }
+        return parts.joined(separator: " · ")
+    }
+
+    private var accessibilityText: String {
+        let day = event.start?.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de)) ?? ""
+        var parts = [event.kindLabel, event.name ?? "Termin", day, event.timeRange, meta, "Status \(EventStatus(event: event).title)"]
+        if (event.hasNotifications ?? 0) > 0 { parts.append("Neue Mitteilung") }
+        if !isPast && !state.isNotifying(entry.id) { parts.append("Benachrichtigungen aus") }
+        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }
 
-/// Toolbar indicator: spinner while syncing, otherwise last-sync time.
+/// Toolbar button: rotates while syncing; after a failed sync it turns red and explains why.
 struct SyncStatusButton: View {
     @Environment(AppState.self) private var state
+    @State private var showError = false
 
     var body: some View {
         Button {
-            Task { await state.refresh() }
+            if state.lastError != nil { showError = true } else { Task { await state.refresh() } }
         } label: {
-            if state.isSyncing {
-                ProgressView()
-            } else {
-                Image(systemName: state.lastError == nil ? "arrow.triangle.2.circlepath" : "exclamationmark.arrow.triangle.2.circlepath")
-                    .foregroundStyle(state.lastError == nil ? AnyShapeStyle(.tint) : AnyShapeStyle(Theme.alert))
-            }
+            Image(systemName: state.lastError == nil ? "arrow.clockwise" : "exclamationmark.arrow.circlepath")
+                .symbolEffect(.rotate, options: .repeat(.continuous), isActive: state.isSyncing)
+                .foregroundStyle(state.lastError == nil ? AnyShapeStyle(.tint) : AnyShapeStyle(Theme.alert))
         }
         .disabled(state.isSyncing)
-        .accessibilityLabel("Aktualisieren")
+        .accessibilityLabel(state.lastError == nil ? "Aktualisieren" : "Synchronisierung fehlgeschlagen")
+        .alert("Synchronisierung fehlgeschlagen", isPresented: $showError) {
+            Button("Erneut versuchen") { Task { await state.refresh() } }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(state.lastError ?? "")
+        }
     }
 }

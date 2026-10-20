@@ -14,7 +14,6 @@ struct SettingsView: View {
             Form {
                 accountSection
                 notificationSection
-                categorySection
                 mapsSection
                 backgroundSection
                 logSection
@@ -109,6 +108,17 @@ struct SettingsView: View {
                 } icon: { SettingsIcon(symbol: "bell.badge.fill", color: Theme.alert) }
             }
 
+            NavigationLink {
+                CategoriesView()
+            } label: {
+                LabeledContent {
+                    let all = ChangeKind.Category.allCases.count
+                    Text("\(all - state.disabledCategories.count) von \(all)")
+                } label: {
+                    Label { Text("Gemeldete Änderungen") } icon: { SettingsIcon(symbol: "list.bullet", color: .gray) }
+                }
+            }
+
             let overrides = state.preferences.overrides.count
             if overrides > 0 {
                 LabeledContent("Eigene Einstellungen", value: "\(overrides) Termin\(overrides == 1 ? "" : "e")")
@@ -120,10 +130,11 @@ struct SettingsView: View {
                     testSent = true
                 }
             } label: {
-                Label { Text(testSent ? "Test gesendet ✓" : "Test-Benachrichtigung senden") } icon: {
-                    SettingsIcon(symbol: "paperplane.fill", color: Theme.accent)
+                Label { Text(testSent ? "Test gesendet" : "Test-Benachrichtigung senden") } icon: {
+                    SettingsIcon(symbol: testSent ? "checkmark" : "paperplane.fill", color: testSent ? Theme.positive : Theme.accent)
                 }
             }
+            .sensoryFeedback(.success, trigger: testSent) { _, new in new }
             .disabled(state.notificationStatus != .authorized)
         } header: {
             Text("Benachrichtigungen")
@@ -149,21 +160,6 @@ struct SettingsView: View {
             Button { Task { await state.requestNotificationPermission() } } label: {
                 Label { Text("Mitteilungen erlauben") } icon: { SettingsIcon(symbol: "bell", color: Theme.warning) }
             }
-        }
-    }
-
-    private var categorySection: some View {
-        Section {
-            ForEach(ChangeKind.Category.allCases, id: \.self) { category in
-                Toggle(isOn: Binding(get: { !state.disabledCategories.contains(category) },
-                                     set: { state.setCategory(category, enabled: $0) })) {
-                    Label { Text(ChangeFormatter.categoryTitle(category)) } icon: {
-                        SettingsIcon(symbol: ChangeFormatter.categorySymbol(category), color: .gray)
-                    }
-                }
-            }
-        } header: {
-            Text("Gemeldete Änderungen")
         }
     }
 
@@ -278,6 +274,29 @@ struct SettingsView: View {
     }
 }
 
+private struct CategoriesView: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(ChangeKind.Category.allCases, id: \.self) { category in
+                    Toggle(isOn: Binding(get: { !state.disabledCategories.contains(category) },
+                                         set: { state.setCategory(category, enabled: $0) })) {
+                        Label { Text(ChangeFormatter.categoryTitle(category)) } icon: {
+                            SettingsIcon(symbol: ChangeFormatter.categorySymbol(category), color: .gray)
+                        }
+                    }
+                }
+            } footer: {
+                Text("Nur eingeschaltete Arten von Änderungen lösen eine Mitteilung aus. Im Tab „Änderungen“ erscheinen weiterhin alle.")
+            }
+        }
+        .navigationTitle("Gemeldete Änderungen")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 private struct LogAreasView: View {
     @Environment(AppState.self) private var state
 
@@ -295,18 +314,6 @@ private struct LogAreasView: View {
         }
         .navigationTitle("Bereiche")
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-struct SettingsIcon: View {
-    let symbol: String
-    let color: Color
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 13, weight: .semibold))
-            .frame(width: 28, height: 28)
-            .background(color.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .foregroundStyle(.white)
     }
 }
 

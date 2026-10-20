@@ -12,6 +12,8 @@ struct StatusSheet: View {
     @State private var attendance: Availability?
     @State private var notes = ""
     @State private var saving = false
+    @State private var saved = 0
+    @State private var failed = 0
     @State private var error: String?
     @FocusState private var notesFocused: Bool
 
@@ -25,131 +27,112 @@ struct StatusSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+            Form {
+                Section {
                     header
+                }
 
-                    if asksAttendance {
-                        section("Teilnahme") {
-                            HStack(spacing: 10) {
-                                choice("Ich bin dabei", symbol: "checkmark", color: Theme.positive, selected: attendance == .confirmed) {
-                                    attendance = .confirmed
-                                    status = nil
-                                }
-                                choice("Ich kann nicht", symbol: "xmark", color: Theme.alert, selected: attendance == .declined) {
-                                    attendance = .declined
-                                }
-                            }
+                if asksAttendance {
+                    Section("Teilnahme") {
+                        choice("Ich bin dabei", symbol: "checkmark", color: Theme.positive, selected: attendance == .confirmed) {
+                            attendance = .confirmed
+                            status = nil
                         }
-                    }
-
-                    section("Status") {
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                            ForEach(HealthStatus.selectable, id: \.self) { s in
-                                let allowed = StatusRules.allowedStatuses(for: [event]).contains(s)
-                                choice(StatusText.health(s.rawValue), symbol: symbol(s), color: color(s),
-                                       selected: status == s, enabled: allowed && statusEnabled) {
-                                    if status != s { notes = "" }   // like the web: new status, new note
-                                    status = s
-                                }
-                            }
+                        choice("Ich kann nicht", symbol: "xmark", color: Theme.alert, selected: attendance == .declined) {
+                            attendance = .declined
                         }
-                        if event.isGame {
-                            Text("„Gesund“ kann bei Spielen nur dein Trainer setzen.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .opacity(statusEnabled ? 1 : 0.45)
-
-                    section("Notiz") {
-                        VStack(alignment: .trailing, spacing: 4) {
-                            TextField("Optional, z. B. „Fieber seit gestern“", text: $notes, axis: .vertical)
-                                .lineLimit(3...6)
-                                .font(.subheadline)
-                                .focused($notesFocused)
-                                .padding(12)
-                                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .onChange(of: notes) { _, new in
-                                    if new.count > StatusRules.maxNotesLength { notes = String(new.prefix(StatusRules.maxNotesLength)) }
-                                }
-                            Text("\(notes.count) / \(StatusRules.maxNotesLength)")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if let error {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.footnote)
-                            .foregroundStyle(Theme.alert)
                     }
                 }
-                .padding()
+
+                Section {
+                    ForEach(HealthStatus.selectable, id: \.self) { s in
+                        let allowed = StatusRules.allowedStatuses(for: [event]).contains(s)
+                        choice(StatusText.health(s.rawValue), symbol: symbol(s), color: color(s),
+                               selected: status == s, enabled: allowed && statusEnabled) {
+                            if status != s { notes = "" }   // like the web: new status, new note
+                            status = s
+                        }
+                    }
+                } header: {
+                    Text("Status")
+                } footer: {
+                    if event.isGame { Text("„Gesund“ kann bei Spielen nur dein Trainer setzen.") }
+                }
+
+                Section {
+                    TextField("Optional, z. B. „Fieber seit gestern“", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                        .focused($notesFocused)
+                        .onChange(of: notes) { _, new in
+                            if new.count > StatusRules.maxNotesLength { notes = String(new.prefix(StatusRules.maxNotesLength)) }
+                        }
+                } header: {
+                    Text("Notiz")
+                } footer: {
+                    HStack(alignment: .firstTextBaseline) {
+                        if let error {
+                            Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.alert)
+                        }
+                        Spacer()
+                        Text("\(notes.count) / \(StatusRules.maxNotesLength)").monospacedDigit()
+                    }
+                }
             }
-            .background(Color(.systemGroupedBackground))
             .navigationTitle("Status ändern")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action: save) {
-                        if saving { ProgressView() } else { Text("Speichern").bold() }
+                        if saving { ProgressView() } else { Text("Speichern") }
                     }
                     .disabled(!canSave)
                 }
             }
             .onAppear(perform: seed)
-            .sensoryFeedback(.success, trigger: saving) { old, new in old && !new && error == nil }
+            .sensoryFeedback(.selection, trigger: status)
+            .sensoryFeedback(.selection, trigger: attendance)
+            .sensoryFeedback(.success, trigger: saved)
+            .sensoryFeedback(.error, trigger: failed)
         }
         .presentationDetents([.large])
     }
 
     private var header: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2).fill(event.tint.gradient).frame(width: 4, height: 38)
+            Capsule().fill(event.tint).frame(width: 4, height: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text(event.name ?? "Termin").font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text([event.start?.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).locale(.de)),
+                Text(event.name ?? "Termin").font(.body.weight(.semibold)).lineLimit(2)
+                Text([event.start?.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de)),
                       event.timeRange.isEmpty ? nil : event.timeRange].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 
-    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.caption.weight(.semibold)).textCase(.uppercase).foregroundStyle(.secondary)
-            content()
-        }
-    }
-
+    /// A selection row like in iOS Settings: colored glyph, title, checkmark when chosen.
     private func choice(_ title: String, symbol: String, color: Color, selected: Bool, enabled: Bool = true,
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.footnote.weight(.bold))
-                    .frame(width: 26, height: 26)
-                    .background(selected ? AnyShapeStyle(Color.white.opacity(0.25)) : AnyShapeStyle(color.opacity(0.15)), in: Circle())
-                    .foregroundStyle(selected ? .white : color)
-                Text(title).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
-                if selected { Image(systemName: "checkmark.circle.fill").font(.subheadline) }
+            HStack(spacing: 12) {
+                SettingsIcon(symbol: symbol, color: color)
+                Text(title).foregroundStyle(Color.primary)
+                Spacer()
+                if selected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.tint)
+                        .transition(.opacity)
+                }
             }
-            .padding(.horizontal, 12).padding(.vertical, 11)
-            .frame(maxWidth: .infinity)
-            .foregroundStyle(selected ? Color.white : Color.primary)
-            .background(selected ? AnyShapeStyle(color.gradient) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(selected ? Color.clear : Color(.separator).opacity(0.5), lineWidth: 0.5))
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
-        .animation(.snappy(duration: 0.2), value: selected)
+        .animation(Theme.spring, value: selected)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func symbol(_ s: HealthStatus) -> String {
@@ -188,7 +171,9 @@ struct StatusSheet: View {
             defer { saving = false }
             do {
                 try await state.submitStatus(for: entry, submission)
+                saved += 1
                 dismiss()
+                return
             } catch StatusRules.ValidationError.statusRequired {
                 error = "Bitte wähle einen Status."
             } catch StatusRules.ValidationError.notEditable {
@@ -198,6 +183,7 @@ struct StatusSheet: View {
             } catch {
                 self.error = "Speichern fehlgeschlagen. Bitte prüfe deine Verbindung."
             }
+            failed += 1
         }
     }
 }

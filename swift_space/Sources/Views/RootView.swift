@@ -23,6 +23,7 @@ struct RootView: View {
                     SettingsView()
                 }
             }
+            .minimizingTabBar()
         } else {
             LoginView()
         }

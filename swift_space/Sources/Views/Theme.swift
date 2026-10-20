@@ -6,11 +6,15 @@ enum Theme {
     static let night = Color(red: 0.024, green: 0.071, blue: 0.169)
     static let ice = Color(red: 0.353, green: 0.82, blue: 1.0)
     static let alert = Color("Alert")
-    static let positive = Color(red: 0.2, green: 0.74, blue: 0.45)
-    static let warning = Color(red: 0.96, green: 0.62, blue: 0.2)
+    // System colors adapt to dark mode and "Increase Contrast" on their own.
+    static let positive = Color(.systemGreen)
+    static let warning = Color(.systemOrange)
 
-    static let heroGradient = LinearGradient(colors: [night, Color(red: 0.04, green: 0.18, blue: 0.39), Color(red: 0.1, green: 0.44, blue: 0.7)],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let heroGradient = LinearGradient(colors: [night, Color(red: 0.05, green: 0.2, blue: 0.42)],
+                                             startPoint: .top, endPoint: .bottom)
+
+    /// Critically damped: no overshoot unless a gesture supplied momentum.
+    static let spring = Animation.spring(duration: 0.3, bounce: 0)
 }
 
 extension Color {
@@ -45,23 +49,24 @@ extension Event {
     }
 }
 
-/// Small rounded label used for status and type tags.
+/// Small rounded label used for status and type tags. Tinted by default; `filled` is for the one
+/// thing on screen that should stand out.
 struct Pill: View {
     let text: String
     var symbol: String?
     var color: Color
-    var filled = true
+    var filled = false
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             if let symbol { Image(systemName: symbol).imageScale(.small) }
             Text(text).lineLimit(1)
         }
-        .font(.caption2.weight(.semibold))
+        .font(.caption.weight(.semibold))
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
         .foregroundStyle(filled ? .white : color)
-        .background(filled ? AnyShapeStyle(color.gradient) : AnyShapeStyle(color.opacity(0.14)), in: Capsule())
+        .background(filled ? color : color.opacity(0.14), in: Capsule())
     }
 }
 
@@ -69,60 +74,93 @@ struct Pill: View {
 struct StatusPill: View {
     let event: Event
     var body: some View {
+        let s = EventStatus(event: event)
+        Pill(text: s.title, symbol: s.symbol, color: s.color)
+    }
+}
+
+/// Short status of an event: shared by the pill and the VoiceOver label of a row.
+struct EventStatus {
+    let title: String
+    let symbol: String
+    let color: Color
+
+    init(event: Event) {
         switch event.availability {
         case .notRequested:
             let h = event.health
             if h == .attending || event.healthStatus == nil {
-                Pill(text: "Dabei", symbol: "checkmark", color: Theme.positive)
+                (title, symbol, color) = ("Dabei", "checkmark", Theme.positive)
             } else {
-                Pill(text: StatusText.health(h.rawValue), symbol: h == .healthy ? "checkmark" : "xmark",
-                     color: h == .healthy ? Theme.positive : Theme.alert)
+                (title, symbol, color) = (StatusText.health(h.rawValue), h == .healthy ? "checkmark" : "xmark",
+                                          h == .healthy ? Theme.positive : Theme.alert)
             }
-        case .requested: Pill(text: "Angefragt", symbol: "exclamationmark", color: Theme.warning)
-        case .confirmed: Pill(text: "Zugesagt", symbol: "checkmark", color: Theme.positive)
-        case .declined: Pill(text: "Abgesagt", symbol: "xmark", color: Theme.alert)
+        case .requested: (title, symbol, color) = ("Angefragt", "questionmark", Theme.warning)
+        case .confirmed: (title, symbol, color) = ("Zugesagt", "checkmark", Theme.positive)
+        case .declined: (title, symbol, color) = ("Abgesagt", "xmark", Theme.alert)
         }
     }
 }
 
-/// Grouped card container used throughout the detail screens.
-struct Card<Content: View>: View {
-    var title: String?
-    var symbol: String?
-    @ViewBuilder var content: Content
+/// Rounded, colored glyph in the style of the iOS Settings app.
+struct SettingsIcon: View {
+    let symbol: String
+    let color: Color
+    @ScaledMetric(relativeTo: .body) private var size = 29
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let title {
-                Label(title, systemImage: symbol ?? "circle")
-                    .font(.caption.weight(.semibold))
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                    .labelStyle(.titleAndIcon)
-            }
-            content
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.5, weight: .semibold))
+            .frame(width: size, height: size)
+            .background(color.gradient, in: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+            .foregroundStyle(.white)
+            .accessibilityHidden(true)
     }
 }
 
+/// Native empty state, quiet by design (no looping animation).
 struct EmptyStateView: View {
     let symbol: String
     let title: String
     let message: String
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 38, weight: .light))
-                .foregroundStyle(Theme.accent.gradient)
-                .symbolEffect(.pulse, options: .repeating)
-            Text(title).font(.subheadline.weight(.semibold))
-            Text(message).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        ContentUnavailableView {
+            Label(title, systemImage: symbol)
+        } description: {
+            Text(message)
         }
-        .padding(32)
-        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Immediate, subtle feedback on touch-down for custom tappable surfaces.
+struct PressableStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .brightness(configuration.isPressed ? -0.04 : 0)
+            .animation(Theme.spring, value: configuration.isPressed)
+    }
+}
+
+extension View {
+    /// Rounded hero surface in an event's color; flat, without drop shadow or decoration.
+    func heroBackground(_ tint: Color) -> some View {
+        background {
+            LinearGradient(colors: [tint.mix(with: .black, by: 0.15), tint.mix(with: Theme.night, by: 0.55)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    /// Lets the tab bar shrink while scrolling on iOS 26; no-op before.
+    @ViewBuilder func minimizingTabBar() -> some View {
+        if #available(iOS 26.0, *) {
+            tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            self
+        }
     }
 }
