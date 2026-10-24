@@ -132,6 +132,46 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(third.changes.map(\.kind), [.added])
     }
 
+    func testRemovedUpcomingEntryStaysAsCancelledThenArchives() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = SyncStore(directory: dir)
+        let transport = FakeTransport()
+        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let t0 = EventDates.parseDateTime("2026-10-18 08:00:00")!
+        let both = #"{"app_data":[{"id_game":1,"name":"Spiel","datetime":"2026-10-20T12:00:00","date":"2026-10-20","place":"Halle"},{"id_practice":2,"name":"Training","datetime":"2026-10-21T17:00:00","date":"2026-10-21"}]}"#
+        let onlyTraining = #"{"app_data":[{"id_practice":2,"name":"Training","datetime":"2026-10-21T17:00:00","date":"2026-10-21"}]}"#
+        transport.responses["refreshdata"] = both
+        _ = try await engine.sync(clubIDs: ["86"], playerID: 1, now: t0)
+
+        // Game vanishes: reported once, kept with its data and flagged.
+        transport.responses["refreshdata"] = onlyTraining
+        let removed = try await engine.sync(clubIDs: ["86"], playerID: 1, now: t0)
+        XCTAssertEqual(removed.changes.map(\.kind), [.removed])
+        XCTAssertEqual(removed.entries.map(\.id), ["g1", "p2"])
+        XCTAssertEqual(removed.entries[0].cancelledAt, t0)
+        XCTAssertEqual(removed.entries[0].event.place, "Halle")
+
+        // Still gone: no second report, original cancellation date kept.
+        let again = try await engine.sync(clubIDs: ["86"], playerID: 1, now: t0.addingTimeInterval(3600))
+        XCTAssertTrue(again.changes.isEmpty)
+        XCTAssertEqual(again.entries.first?.cancelledAt, t0)
+
+        // Comes back: reported as added, flag cleared.
+        transport.responses["refreshdata"] = both
+        let back = try await engine.sync(clubIDs: ["86"], playerID: 1, now: t0.addingTimeInterval(7200))
+        XCTAssertEqual(back.changes.map(\.kind), [.added])
+        XCTAssertNil(back.entries.first?.cancelledAt)
+
+        // Gone again, then its date passes: archived with the flag.
+        transport.responses["refreshdata"] = onlyTraining
+        _ = try await engine.sync(clubIDs: ["86"], playerID: 1, now: t0.addingTimeInterval(9000))
+        let later = try await engine.sync(clubIDs: ["86"], playerID: 1, now: EventDates.parseDateTime("2026-10-20 20:00:00")!)
+        XCTAssertEqual(later.entries.map(\.id), ["p2"])
+        let archive = await store.load().archive ?? []
+        XCTAssertEqual(archive.map(\.id), ["g1"])
+        XCTAssertNotNil(archive.first?.cancelledAt)
+    }
+
     func testOwnStatusChangeIsNotReported() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = SyncStore(directory: dir)

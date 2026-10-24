@@ -20,6 +20,7 @@ final class SettingsStore: @unchecked Sendable {
         static let loggingEnabled = "loggingEnabled"
         static let logLevel = "logLevel"
         static let disabledLogAreas = "disabledLogAreas"
+        static let scheduleFilter = "scheduleFilter"
     }
 
     /// When iOS last woke the app for a background run (shown in the settings).
@@ -55,6 +56,12 @@ final class SettingsStore: @unchecked Sendable {
         set { defaults.set(newValue.rawValue, forKey: Key.mapProvider) }
     }
 
+    /// Shared by "Spiele & Trainings" and "Vergangene Termine"; survives relaunches.
+    var scheduleFilter: ScheduleFilter {
+        get { defaults.data(forKey: Key.scheduleFilter).flatMap { try? JSONDecoder().decode(ScheduleFilter.self, from: $0) } ?? ScheduleFilter() }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.scheduleFilter) }
+    }
+
     /// Global default ("Änderungen standardmäßig melden") + per-event overrides.
     var preferences: NotificationPreferences {
         get {
@@ -80,6 +87,39 @@ final class SettingsStore: @unchecked Sendable {
 
     func shouldNotify(_ change: EventChange) -> Bool {
         preferences.isEnabled(change.eventKey) && !disabledCategories.contains(change.kind.category)
+    }
+}
+
+/// What the schedule and the history show: kind of event and (with several clubs) one club.
+struct ScheduleFilter: Codable, Equatable {
+    var kind: KindFilter = .all
+    var clubID: String?
+
+    var isActive: Bool { kind != .all || clubID != nil }
+
+    func matches(_ entry: TrackedEntry) -> Bool {
+        kind.matches(entry.event) && (clubID == nil || entry.clubID == clubID)
+    }
+}
+
+enum KindFilter: String, Codable, CaseIterable, Identifiable {
+    case all, games, practices
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all: "Spiele & Trainings"
+        case .games: "Nur Spiele"
+        case .practices: "Nur Trainings"
+        }
+    }
+
+    func matches(_ e: Event) -> Bool {
+        switch self {
+        case .all: true
+        case .games: e.idGame != nil
+        case .practices: e.idPractice != nil
+        }
     }
 }
 

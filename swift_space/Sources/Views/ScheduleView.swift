@@ -4,18 +4,17 @@ import SwiftUI
 /// "Spiele & Trainings": the player's personal schedule (`app_data`) across all clubs.
 struct ScheduleView: View {
     @Environment(AppState.self) private var state
-    @State private var filter: KindFilter = .all
-    @State private var club: String?
 
     var body: some View {
         @Bindable var state = state
+        let filter = state.scheduleFilter
         NavigationStack(path: $state.schedulePath) {
             List {
-                let upcoming = filtered(state.entries)
+                let upcoming = state.entries.filter(filter.matches)
 
-                FilterBar(filter: $filter, club: $club)
+                ActiveFilterRow()
 
-                if filter == .all, club == nil, let next = upcoming.first(where: { ($0.event.start ?? .distantPast) > .now }) {
+                if !filter.isActive, let next = upcoming.first(where: { !$0.isCancelled && ($0.event.start ?? .distantPast) > .now }) {
                     Section {
                         Button { state.schedulePath.append(next.id) } label: { NextUpCard(entry: next) }
                             .buttonStyle(PressableStyle())
@@ -27,15 +26,21 @@ struct ScheduleView: View {
                 if !state.archive.isEmpty || state.isImportingHistory {
                     Section {
                         NavigationLink(value: PastEventsView.route) {
-                            PastLinkLabel(count: filtered(state.archive).count, importing: state.isImportingHistory)
+                            PastLinkLabel(count: state.archive.filter(filter.matches).count, importing: state.isImportingHistory)
                         }
                     }
                 }
 
                 if upcoming.isEmpty && !state.isSyncing {
-                    EmptyStateView(symbol: "calendar", title: "Keine Termine",
-                                   message: "Sobald dein Verein Spiele oder Trainings einträgt, erscheinen sie hier.")
-                        .listRowBackground(Color.clear)
+                    if filter.isActive && !state.entries.isEmpty {
+                        EmptyStateView(symbol: "line.3.horizontal.decrease.circle", title: "Keine passenden Termine",
+                                       message: "Für diesen Filter gibt es gerade keine Termine.")
+                            .listRowBackground(Color.clear)
+                    } else {
+                        EmptyStateView(symbol: "calendar", title: "Keine Termine",
+                                       message: "Sobald dein Verein Spiele oder Trainings einträgt, erscheinen sie hier.")
+                            .listRowBackground(Color.clear)
+                    }
                 }
                 EntrySections(entries: upcoming)
             }
@@ -44,108 +49,117 @@ struct ScheduleView: View {
             .navigationTitle("Spiele & Trainings")
             .navigationDestination(for: String.self) { key in
                 if key == PastEventsView.route {
-                    PastEventsView(filter: filter, club: club)
+                    PastEventsView()
                 } else {
                     EventDetailView(eventKey: key)
                 }
             }
             .refreshable { await state.refresh() }
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) { FilterMenu() }
                 ToolbarItem(placement: .topBarTrailing) { SyncStatusButton() }
             }
             .overlay {
                 if state.entries.isEmpty && state.isSyncing { ProgressView("Lade Termine…") }
             }
             .animation(Theme.spring, value: filter)
-            .animation(Theme.spring, value: club)
-        }
-    }
-
-    private func filtered(_ entries: [TrackedEntry]) -> [TrackedEntry] {
-        entries.filter { filter.matches($0.event) && (club == nil || $0.clubID == club) }
-    }
-}
-
-enum KindFilter: String, CaseIterable, Identifiable {
-    case all = "Alle", games = "Spiele", practices = "Trainings"
-    var id: Self { self }
-    func matches(_ e: Event) -> Bool {
-        switch self {
-        case .all: true
-        case .games: e.idGame != nil
-        case .practices: e.idPractice != nil
         }
     }
 }
 
-/// Kind filter + club chips (only when the player has more than one club). Lives inside a List
-/// as a row without background.
-struct FilterBar: View {
+/// Toolbar filter shared by the schedule and the history, like Mail and Files: one menu for the kind
+/// of event and (with several clubs) the club. The glyph fills while a filter is active.
+struct FilterMenu: View {
     @Environment(AppState.self) private var state
-    @Binding var filter: KindFilter
-    @Binding var club: String?
 
     var body: some View {
-        VStack(spacing: 10) {
-            Picker("Filter", selection: $filter) {
-                ForEach(KindFilter.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-
-            if state.hasMultipleClubs {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        chip("Alle Vereine", logo: nil, selected: club == nil) { club = nil }
-                        ForEach(state.clubs) { c in
-                            chip(c.clubName ?? c.id, logo: c.clubLogo, selected: club == c.id) { club = c.id }
-                        }
-                    }
+        let filter = state.scheduleFilter
+        Menu {
+            Section("Anzeigen") {
+                Picker("Anzeigen", selection: binding(\.kind)) {
+                    ForEach(KindFilter.allCases) { Text($0.title).tag($0) }
                 }
-                .scrollClipDisabled()
+                .pickerStyle(.inline)
             }
+            if state.hasMultipleClubs {
+                Section("Verein") {
+                    Picker("Verein", selection: binding(\.clubID)) {
+                        Text("Alle Vereine").tag(String?.none)
+                        ForEach(state.clubs) { Text($0.clubName ?? $0.id).tag(String?.some($0.id)) }
+                    }
+                    .pickerStyle(.inline)
+                }
+            }
+            if filter.isActive {
+                Button("Filter zurücksetzen", systemImage: "xmark.circle") { state.setScheduleFilter(ScheduleFilter()) }
+            }
+        } label: {
+            Image(systemName: filter.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                .contentTransition(.symbolEffect(.replace))
         }
-        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-        .listRowBackground(Color.clear)
-        .sensoryFeedback(.selection, trigger: club)
+        .sensoryFeedback(.selection, trigger: filter)
+        .accessibilityLabel("Filter")
+        .accessibilityValue(filter.isActive ? ActiveFilterRow.summary(filter, state: state) : "Aus")
     }
 
-    private func chip(_ title: String, logo: URL?, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let logo {
-                    AsyncImage(url: logo) { $0.resizable().scaledToFit() } placeholder: { Color.clear }
-                        .frame(width: 16, height: 16)
-                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+    private func binding<T>(_ path: WritableKeyPath<ScheduleFilter, T>) -> Binding<T> {
+        Binding(get: { state.scheduleFilter[keyPath: path] },
+                set: { var f = state.scheduleFilter; f[keyPath: path] = $0; state.setScheduleFilter(f) })
+    }
+}
+
+/// Only while a filter is active: says what is hidden and clears it with one tap.
+struct ActiveFilterRow: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        let filter = state.scheduleFilter
+        if filter.isActive {
+            Section {
+                Button { state.setScheduleFilter(ScheduleFilter()) } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "line.3.horizontal.decrease.circle.fill").foregroundStyle(.tint)
+                        Text(Self.summary(filter, state: state))
+                            .foregroundStyle(Color.primary)
+                            .lineLimit(2)
+                        Spacer(minLength: 8)
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                            .imageScale(.large)
+                    }
+                    .font(.subheadline)
                 }
-                Text(title).lineLimit(1)
+                .accessibilityLabel("Gefiltert: \(Self.summary(filter, state: state))")
+                .accessibilityHint("Zeigt wieder alle Termine")
             }
-            .font(.subheadline.weight(selected ? .semibold : .regular))
-            .padding(.horizontal, 14).padding(.vertical, 7)
-            .foregroundStyle(selected ? Color.white : Color.primary)
-            .background(selected ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color(.secondarySystemGroupedBackground)),
-                        in: Capsule())
         }
-        .buttonStyle(PressableStyle())
-        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// "Nur Spiele · EHC Musterstadt"
+    static func summary(_ filter: ScheduleFilter, state: AppState) -> String {
+        var parts: [String] = []
+        if filter.kind != .all { parts.append(filter.kind.title) }
+        if let club = state.clubName(filter.clubID) { parts.append(club) }
+        return parts.joined(separator: " · ")
     }
 }
 
 /// Day-grouped list of entries; shared by the live schedule and the history.
 struct EntrySections: View {
     @Environment(AppState.self) private var state
+    /// Days and entries keep the given order (schedule: soonest first, archive: newest first).
     let entries: [TrackedEntry]
-    var newestFirst = false
 
     var body: some View {
         let byKey = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let groups = EventDates.groupedByDay(entries.map(\.event))
-        ForEach(newestFirst ? groups.reversed() : groups, id: \.day) { group in
+        ForEach(groups, id: \.day) { group in
             Section {
                 ForEach(group.events) { event in
                     if let entry = byKey[event.id] {
                         NavigationLink(value: entry.id) { EventRow(entry: entry) }
-                            .contextMenu { NotifyMenuItem(entry: entry) }
-                            .swipeActions(edge: .trailing) { NotifySwipeAction(entry: entry) }
+                            .contextMenu { if !entry.isCancelled { NotifyMenuItem(entry: entry) } }
+                            .swipeActions(edge: .trailing) { if !entry.isCancelled { NotifySwipeAction(entry: entry) } }
                     }
                 }
             } header: {
@@ -182,31 +196,34 @@ private struct NotifySwipeAction: View {
     }
 }
 
-/// History of the current season: local archive + web import.
+/// History of the current season: local archive + web import. Uses the same filter as the schedule.
 struct PastEventsView: View {
     static let route = "__past__"
     @Environment(AppState.self) private var state
-    @State var filter: KindFilter
-    @State var club: String?
 
     var body: some View {
-        let past = state.archive.filter { filter.matches($0.event) && (club == nil || $0.clubID == club) }
+        let filter = state.scheduleFilter
+        let past = state.archive.filter(filter.matches)
         List {
-            FilterBar(filter: $filter, club: $club)
+            ActiveFilterRow()
             if past.isEmpty {
-                EmptyStateView(symbol: "clock.arrow.circlepath", title: "Noch keine vergangenen Termine",
+                EmptyStateView(symbol: "clock.arrow.circlepath",
+                               title: filter.isActive && !state.archive.isEmpty ? "Keine passenden Termine" : "Noch keine vergangenen Termine",
                                message: state.isImportingHistory ? "Die Saison wird gerade geladen…"
+                                   : filter.isActive && !state.archive.isEmpty ? "Für diesen Filter gibt es keine vergangenen Termine."
                                    : "Vergangene Termine werden hier gesammelt.")
                     .listRowBackground(Color.clear)
             }
-            EntrySections(entries: past, newestFirst: true)
+            EntrySections(entries: past)
         }
         .listStyle(.insetGrouped)
         .listSectionSpacing(.compact)
         .navigationTitle("Vergangene Termine")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { FilterMenu() }
+        }
         .animation(Theme.spring, value: filter)
-        .animation(Theme.spring, value: club)
     }
 }
 
@@ -218,7 +235,7 @@ private struct PastLinkLabel: View {
             SettingsIcon(symbol: "clock.arrow.circlepath", color: .indigo)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Vergangene Termine")
-                Text(importing ? "Saison wird geladen…" : "\(count) Einträge in dieser Saison")
+                Text(importing ? "Saison wird geladen…" : count == 1 ? "1 Eintrag in dieser Saison" : "\(count) Einträge in dieser Saison")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Spacer()
@@ -310,6 +327,8 @@ struct EventRow: View {
     let entry: TrackedEntry
     private var event: Event { entry.event }
     private var isPast: Bool { (event.start ?? .distantFuture) < .now }
+    /// Notifications only matter for entries that can still change.
+    private var showsMuted: Bool { !isPast && !entry.isCancelled && !state.isNotifying(entry.id) }
 
     var body: some View {
         let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
@@ -318,7 +337,7 @@ struct EventRow: View {
             time
             HStack(alignment: .top, spacing: 12) {
                 Capsule()
-                    .fill(event.tint)
+                    .fill(entry.isCancelled ? Theme.alert : event.tint)
                     .frame(width: 4)
                 details
             }
@@ -348,6 +367,7 @@ struct EventRow: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(event.name ?? "Termin")
                 .font(.body.weight(.semibold))
+                .strikethrough(entry.isCancelled, color: Theme.alert)
                 .lineLimit(2)
 
             Text(meta)
@@ -356,7 +376,7 @@ struct EventRow: View {
                 .lineLimit(2)
 
             HStack(spacing: 8) {
-                StatusPill(event: event)
+                if entry.isCancelled { CancelledPill() } else { StatusPill(event: event) }
                 if let notes = entry.detail?.notes ?? event.eventNotes, !PlainText.from(html: notes).isEmpty {
                     Image(systemName: "note.text").foregroundStyle(.secondary)
                 }
@@ -365,7 +385,7 @@ struct EventRow: View {
                 }
                 Spacer(minLength: 0)
                 // Only the exception is shown; a bell on every row is noise.
-                if !isPast && !state.isNotifying(entry.id) {
+                if showsMuted {
                     Image(systemName: "bell.slash.fill").foregroundStyle(.tertiary)
                 }
             }
@@ -384,9 +404,10 @@ struct EventRow: View {
 
     private var accessibilityText: String {
         let day = event.start?.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de)) ?? ""
-        var parts = [event.kindLabel, event.name ?? "Termin", day, event.timeRange, meta, "Status \(EventStatus(event: event).title)"]
+        let status = entry.isCancelled ? EventStatus.cancelledTitle : "Status \(EventStatus(event: event).title)"
+        var parts = [event.kindLabel, event.name ?? "Termin", day, event.timeRange, meta, status]
         if (event.hasNotifications ?? 0) > 0 { parts.append("Neue Mitteilung") }
-        if !isPast && !state.isNotifying(entry.id) { parts.append("Benachrichtigungen aus") }
+        if showsMuted { parts.append("Benachrichtigungen aus") }
         return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }

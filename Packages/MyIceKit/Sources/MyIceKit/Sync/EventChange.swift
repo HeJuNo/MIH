@@ -10,8 +10,12 @@ public struct TrackedEntry: Codable, Hashable, Sendable, Identifiable {
     public var clubID: String?
     /// Set once the entry dropped out of `app_data` after it took place (the API only returns today onwards).
     public var archivedAt: Date?
+    /// Set when the entry vanished from `app_data` before it took place (cancelled or removed by the club).
+    /// The entry is kept with its last known details until its date has passed, then archived.
+    public var cancelledAt: Date?
 
     public var id: String { event.id }
+    public var isCancelled: Bool { cancelledAt != nil }
 
     public init(event: Event, detail: EventDetail? = nil, detailFetchedAt: Date? = nil, clubID: String? = nil) {
         self.event = event

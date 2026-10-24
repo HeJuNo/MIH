@@ -40,6 +40,12 @@ struct EventDetailView: View {
                     .listRowBackground(Color.clear)
             }
 
+            if let cancelledAt = entry.cancelledAt {
+                SwiftUI.Section {
+                    CancelledNotice(cancelledAt: cancelledAt)
+                }
+            }
+
             Picker("Bereich", selection: $section) {
                 ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
             }
@@ -59,15 +65,8 @@ struct EventDetailView: View {
         .navigationTitle(entry.event.kindLabel)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    state.setNotifying(!notifying, for: entry.id)
-                } label: {
-                    Image(systemName: notifying ? "bell.fill" : "bell.slash")
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .sensoryFeedback(.selection, trigger: notifying)
-                .accessibilityLabel(notifying ? "Benachrichtigungen ausschalten" : "Benachrichtigungen einschalten")
+            if !entry.isCancelled {
+                ToolbarItem(placement: .topBarTrailing) { notifyButton(entry: entry, notifying: notifying) }
             }
         }
         .refreshable { await state.loadDetail(for: entry) }
@@ -76,6 +75,36 @@ struct EventDetailView: View {
             await state.loadDetail(for: entry)
             loading = false
         }
+    }
+
+    private func notifyButton(entry: TrackedEntry, notifying: Bool) -> some View {
+        Button {
+            state.setNotifying(!notifying, for: entry.id)
+        } label: {
+            Image(systemName: notifying ? "bell.fill" : "bell.slash")
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .sensoryFeedback(.selection, trigger: notifying)
+        .accessibilityLabel(notifying ? "Benachrichtigungen ausschalten" : "Benachrichtigungen einschalten")
+    }
+}
+
+/// Shown above the details of an event the club removed; the details below are its last known state.
+private struct CancelledNotice: View {
+    let cancelledAt: Date
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            SettingsIcon(symbol: "xmark", color: Theme.alert)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(EventStatus.cancelledTitle).font(.body.weight(.semibold))
+                Text("Am \(cancelledAt.formatted(.dateTime.day().month(.wide).hour().minute().locale(.de))) aus dem Plan entfernt. Angezeigt wird der letzte bekannte Stand.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -95,9 +124,14 @@ private struct DetailHero: View {
             .font(.footnote.weight(.semibold))
             .foregroundStyle(.white.opacity(0.75))
 
+            if entry.isCancelled {
+                Pill(text: EventStatus.cancelledTitle, symbol: "xmark.circle.fill", color: .white, filled: false)
+            }
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.name ?? "Termin")
                     .font(.title2.weight(.bold))
+                    .strikethrough(entry.isCancelled)
                     .fixedSize(horizontal: false, vertical: true)
                 if !event.subtitle.isEmpty {
                     Text(event.subtitle).font(.subheadline).foregroundStyle(.white.opacity(0.75))
@@ -206,8 +240,8 @@ private struct AttendanceRow: View {
     }()
     private var event: Event { entry.event }
     private var detail: EventDetail? { entry.detail }
-    /// Like the original app: only before the event starts, never for archived entries.
-    private var editable: Bool { StatusRules.isEditable(event) && entry.archivedAt == nil }
+    /// Like the original app: only before the event starts, never for archived or cancelled entries.
+    private var editable: Bool { StatusRules.isEditable(event) && entry.archivedAt == nil && !entry.isCancelled }
 
     var body: some View {
         let availability = Availability(code: detail?.available ?? event.available)

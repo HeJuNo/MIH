@@ -107,7 +107,7 @@ public actor SyncEngine {
         let level: LogLevel = details.count < wanted.count ? .warning : .info
         log(level, .sync, "Details: \(details.count) von \(wanted.count) geladen" + (details.count < wanted.count ? " (Rest behält den letzten Stand)" : ""))
 
-        let entries: [TrackedEntry] = events.map { event, club in
+        let fetched: [TrackedEntry] = events.map { event, club in
             if let fresh = details[event.id] {
                 return TrackedEntry(event: event, detail: fresh, detailFetchedAt: now, clubID: club)
             }
@@ -124,11 +124,21 @@ public actor SyncEngine {
             changes = []
         } else {
             let inKnown: (TrackedEntry) -> Bool = { $0.clubID.map(knownClubs.contains) ?? false }
-            changes = ChangeDetector.diff(old: previous.filter(inKnown), new: entries.filter(inKnown), now: now)
+            // Already cancelled entries were reported once; if one comes back it shows up as added.
+            changes = ChangeDetector.diff(old: previous.filter { inKnown($0) && !$0.isCancelled },
+                                          new: fetched.filter(inKnown), now: now)
         }
 
-        // 4. Archive entries that dropped out after they took place.
-        let newKeys = Set(entries.map(\.id))
+        // 4. Upcoming entries that vanished stay visible as cancelled, with their last known details.
+        //    Entries of clubs the player no longer belongs to are simply dropped.
+        let newKeys = Set(fetched.map(\.id))
+        let cancelled: [TrackedEntry] = previous
+            .filter { !newKeys.contains($0.id) && ChangeDetector.isUpcoming($0, now: now) && ($0.clubID.map(clubs.contains) ?? true) }
+            .map { var e = $0; e.cancelledAt = e.cancelledAt ?? now; return e }
+        let entries = (fetched + cancelled)
+            .sorted { (EventDates.start(of: $0.event) ?? .distantFuture) < (EventDates.start(of: $1.event) ?? .distantFuture) }
+
+        // 5. Archive entries that dropped out after they took place (cancelled ones keep their flag).
         var archive = state.archive ?? []
         for var gone in previous where !newKeys.contains(gone.id) && !ChangeDetector.isUpcoming(gone, now: now) {
             gone.archivedAt = now
@@ -209,7 +219,8 @@ public actor SyncEngine {
     /// Fetches a single detail on demand (detail screen, also for archived entries) and stores it.
     /// Changes against the stored detail are logged like those of a regular sync.
     public func refreshDetail(for entry: TrackedEntry, playerID: Int?) async throws -> EventDetail? {
-        guard let playerID, let kind = entry.event.kind, let id = entry.event.primaryID else { return nil }
+        // A cancelled entry no longer exists on the server; keep its last known detail.
+        guard !entry.isCancelled, let playerID, let kind = entry.event.kind, let id = entry.event.primaryID else { return nil }
         let r: EventDetailResponse = try await api.send(.getEvent(kind: kind, eventID: id, playerID: playerID, clubID: entry.clubID))
         guard let detail = r.eventData else { return nil }
         let key = entry.id

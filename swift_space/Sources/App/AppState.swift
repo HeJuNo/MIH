@@ -36,6 +36,7 @@ final class AppState {
     private(set) var disabledCategories: Set<ChangeKind.Category> = []
     private(set) var refreshMinutes = 30
     private(set) var mapProvider: MapProvider = .apple
+    private(set) var storedScheduleFilter = ScheduleFilter()
     private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     private(set) var backgroundRefreshStatus: UIBackgroundRefreshStatus = .available
     private(set) var lastBackgroundRun: Date?
@@ -68,6 +69,9 @@ final class AppState {
             unseenChanges = 2
             lastSync = .now.addingTimeInterval(-420)
             preferences.set(false, for: entries[3].id)
+            // Not persisted, so screenshots never depend on an earlier run.
+            storedScheduleFilter = ScheduleFilter(kind: DemoData.value(after: "-demoFilter").flatMap(KindFilter.init(rawValue:)) ?? .all,
+                                                  clubID: DemoData.value(after: "-demoClub"))
             if let i = DemoData.detailIndex, entries.indices.contains(i) { schedulePath = [entries[i].id] }
             if DemoData.opensPast {
                 schedulePath = [PastEventsView.route]
@@ -332,6 +336,7 @@ final class AppState {
         disabledCategories = env.settings.disabledCategories
         refreshMinutes = env.settings.refreshMinutes
         mapProvider = env.settings.mapProvider
+        storedScheduleFilter = env.settings.scheduleFilter
         loggingEnabled = env.settings.loggingEnabled
         logLevel = env.settings.logLevel
         logAreas = env.settings.logAreas
@@ -368,6 +373,18 @@ final class AppState {
         return await env.log.entries()
     }
     func clearLog() async { await env.log.clear() }
+
+    /// The stored filter, minus a club the player no longer belongs to (or a single remaining club).
+    var scheduleFilter: ScheduleFilter {
+        var f = storedScheduleFilter
+        if let id = f.clubID, !hasMultipleClubs || !clubs.contains(where: { $0.id == id }) { f.clubID = nil }
+        return f
+    }
+
+    func setScheduleFilter(_ f: ScheduleFilter) {
+        storedScheduleFilter = f
+        env.settings.scheduleFilter = f
+    }
 
     func setMapProvider(_ p: MapProvider) {
         mapProvider = p

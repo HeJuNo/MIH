@@ -79,11 +79,21 @@ struct StatusPill: View {
     }
 }
 
+/// Red, filled marker for an event the club removed from the plan.
+struct CancelledPill: View {
+    var body: some View {
+        Pill(text: EventStatus.cancelledTitle, symbol: "xmark.circle.fill", color: Theme.alert, filled: true)
+    }
+}
+
 /// Short status of an event: shared by the pill and the VoiceOver label of a row.
 struct EventStatus {
     let title: String
     let symbol: String
     let color: Color
+
+    /// Distinct from "Abgesagt", which is the player's own answer to an attendance request.
+    static let cancelledTitle = "Termin abgesagt"
 
     init(event: Event) {
         switch event.availability {

@@ -6,7 +6,8 @@ import MyIceKit
 enum DemoData {
     static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("-demo") }
 
-    /// Screenshot deep links: `-demoDetail <index>`, `-demoSection people|messages`, `-demoStatus`, `-demoPast`.
+    /// Screenshot deep links: `-demoDetail <index>`, `-demoSection people|messages`, `-demoStatus`, `-demoPast`,
+    /// `-demoFilter all|games|practices`, `-demoClub <id>`.
     static func value(after flag: String) -> String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
@@ -29,6 +30,7 @@ enum DemoData {
             return (s, "\(s) \(time):00")
         }
         let (d1, t1) = day(1, "17:30"), (d2, t2) = day(2, "18:00"), (d3, t3) = day(4, "11:15"), (d4, t4) = day(6, "17:30")
+        let (d5, t5) = day(1, "12:00")
         let roster = ##""convocation":{"available_total":8,"available_totalG":1,"available_totalD":3,"available_totalF":4,"staff":[{"fname":"Thomas","lname":"Berger","role":"Headcoach"},{"fname":"Sabine","lname":"Huber","role":"Teammanagerin"}],"available":[{"fname":"Lukas","lname":"Gruber","number":"30","position":"G"},{"fname":"Felix","lname":"Wagner","number":"4","position":"D"},{"fname":"Jonas","lname":"Pichler","number":"7","position":"D"},{"fname":"Paul","lname":"Steiner","number":"22","position":"D"},{"fname":"Alex","lname":"Muster","number":"17","position":"F"},{"fname":"Max","lname":"Hofer","number":"9","position":"F"},{"fname":"Leon","lname":"Mayr","number":"91","position":"F"},{"fname":"Elias","lname":"Bauer","number":"88","position":"F"}]}"##
         return [
             TrackedEntry(event: decode(##"{"id_practice":11,"name":"Eistraining","agegroup":"U15","practicegroup":"Gruppe A","place":"Eishalle Musterstadt, Platz 1","color":"#1E88E5","date":"\##(d1)","datetime":"\##(t1)","time_start":"17:30:00","time_end":"19:00:00","available":0,"health_status":3}"##),
@@ -38,7 +40,16 @@ enum DemoData {
             TrackedEntry(event: decode(##"{"id_game":22,"name":"EC Talheim – EHC Musterstadt","agegroup":"U15","place":"Sportzentrum Talheim","color":"#8E24AA","date":"\##(d3)","datetime":"\##(t3)","time_start":"11:15:00","time_end":"13:30:00","available":0,"health_status":3}"##),
                          detail: decode(##"{"type":"Meisterschaft","is_away":"ausw&auml;rts","category":"games","available":0,"departure":"Abfahrt Bus","departure_time":"08:45","meeting":"Treffpunkt","meeting_time":"08:30 Parkplatz Halle",\##(roster)}"##)),
             TrackedEntry(event: decode(##"{"id_practice":12,"name":"Trockentraining","agegroup":"U15","place":"Turnhalle Mittelschule","color":"#43A047","date":"\##(d4)","datetime":"\##(t4)","time_start":"17:30:00","time_end":"18:30:00","available":0,"health_status":8,"health_status_notes":"Erkältet"}"##)),
+            cancelled(TrackedEntry(event: decode(##"{"id_practice":13,"name":"Eistraining","agegroup":"U15","practicegroup":"Gruppe A","place":"Eishalle Musterstadt, Platz 2","color":"#1E88E5","date":"\##(d5)","datetime":"\##(t5)","time_start":"12:00:00","time_end":"13:30:00","available":0,"health_status":3}"##),
+                                   detail: decode(##"{"type":"Training","category":"practices","available":0,"health_status":3,"notes":"<p>Schläger-Check vor dem Training.</p>"}"##)),
+                      at: now.addingTimeInterval(-1800)),
         ]
+    }
+
+    private static func cancelled(_ entry: TrackedEntry, at date: Date) -> TrackedEntry {
+        var e = entry
+        e.cancelledAt = date
+        return e
     }
 
     /// Assigns clubs: the off-ice session belongs to the second club.
@@ -67,6 +78,7 @@ enum DemoData {
 
     static func changes(for entries: [TrackedEntry], now: Date = .now) -> [EventChange] {
         [
+            EventChange(entry: entries[4], detectedAt: now.addingTimeInterval(-1800), kind: .removed),
             EventChange(entry: entries[1], detectedAt: now.addingTimeInterval(-600), kind: .attendance(old: 0, new: 1)),
             EventChange(entry: entries[2], detectedAt: now.addingTimeInterval(-3600), kind: .rosterPublished(players: 8)),
             EventChange(entry: entries[0], detectedAt: now.addingTimeInterval(-7200), kind: .time(old: "17:00–18:30", new: "17:30–19:00")),

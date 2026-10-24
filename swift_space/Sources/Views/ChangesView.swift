@@ -17,14 +17,17 @@ struct ChangesView: View {
                 ForEach(groupedByDay, id: \.0) { day, changes in
                     Section {
                         ForEach(changes) { change in
-                            let available = state.entry(for: change.eventKey) != nil
-                            Button { state.open(eventKey: change.eventKey) } label: {
+                            // Removed events stay openable (read-only); only entries lost before
+                            // they were kept, or trimmed from the archive, have nothing to open.
+                            if state.entry(for: change.eventKey) != nil {
+                                Button { state.open(eventKey: change.eventKey) } label: {
+                                    ChangeLine(change: change, showEvent: true)
+                                }
+                                .foregroundStyle(.primary)
+                                .accessibilityHint("Öffnet den Termin")
+                            } else {
                                 ChangeLine(change: change, showEvent: true)
-                                    .opacity(available ? 1 : 0.5)
                             }
-                            .foregroundStyle(.primary)
-                            .disabled(!available)
-                            .accessibilityHint(available ? "Öffnet den Termin" : "Termin nicht mehr vorhanden")
                         }
                     } header: {
                         Text(dayTitle(day)).font(.headline).foregroundStyle(.primary).textCase(nil)
