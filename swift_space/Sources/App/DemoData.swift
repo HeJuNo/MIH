@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import MyIceKit
+import UIKit
 
 /// Sample content for simulator screenshots: launch with `-demo`.
 enum DemoData {
@@ -44,6 +45,20 @@ enum DemoData {
                                    detail: decode(##"{"type":"Training","category":"practices","available":0,"health_status":3,"notes":"<p>Schläger-Check vor dem Training.</p>"}"##)),
                       at: now.addingTimeInterval(-1800)),
         ]
+    }
+
+    /// Stand-in logos (the demo clubs have no logo URL): colored badges with initials.
+    static func clubLogos() -> [String: UIImage] {
+        func badge(_ text: String, _ color: UIColor) -> UIImage {
+            UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).image { _ in
+                color.setFill()
+                UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: 64, height: 64)).fill()
+                let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 24, weight: .heavy), .foregroundColor: UIColor.white]
+                let size = text.size(withAttributes: attrs)
+                text.draw(at: CGPoint(x: (64 - size.width) / 2, y: (64 - size.height) / 2), withAttributes: attrs)
+            }.menuIcon()
+        }
+        return ["1": badge("EHC", .systemRed), "2": badge("EA", .systemIndigo)]
     }
 
     private static func cancelled(_ entry: TrackedEntry, at date: Date) -> TrackedEntry {

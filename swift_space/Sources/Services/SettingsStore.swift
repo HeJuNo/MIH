@@ -106,11 +106,30 @@ enum KindFilter: String, Codable, CaseIterable, Identifiable {
     case all, games, practices
     var id: Self { self }
 
+    /// Used in the active-filter row ("Nur Spiele · EHC Musterstadt").
     var title: String {
         switch self {
         case .all: "Spiele & Trainings"
         case .games: "Nur Spiele"
         case .practices: "Nur Trainings"
+        }
+    }
+
+    /// Used in the filter menu, where the submenu already says what is chosen.
+    var menuTitle: String {
+        switch self {
+        case .all: "Spiele & Trainings"
+        case .games: "Spiele"
+        case .practices: "Trainings"
+        }
+    }
+
+    /// Same glyphs as the events themselves (`Event.kindSymbol`).
+    var symbol: String {
+        switch self {
+        case .all: "calendar"
+        case .games: "hockey.puck.fill"
+        case .practices: "figure.hockey"
         }
     }
 

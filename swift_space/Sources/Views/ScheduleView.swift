@@ -74,24 +74,34 @@ struct FilterMenu: View {
 
     var body: some View {
         let filter = state.scheduleFilter
+        // Like Notes: each choice is a submenu that shows the current value under its title.
         Menu {
-            Section("Anzeigen") {
-                Picker("Anzeigen", selection: binding(\.kind)) {
-                    ForEach(KindFilter.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.inline)
+            Picker(selection: binding(\.kind)) {
+                ForEach(KindFilter.allCases) { Label($0.menuTitle, systemImage: $0.symbol).tag($0) }
+            } label: {
+                Label("Termine", systemImage: filter.kind.symbol)
             }
+            .pickerStyle(.menu)
+
             if state.hasMultipleClubs {
-                Section("Verein") {
-                    Picker("Verein", selection: binding(\.clubID)) {
-                        Text("Alle Vereine").tag(String?.none)
-                        ForEach(state.clubs) { Text($0.clubName ?? $0.id).tag(String?.some($0.id)) }
+                Picker(selection: binding(\.clubID)) {
+                    Label("Alle Vereine", systemImage: Self.allClubsSymbol).tag(String?.none)
+                    ForEach(state.clubs) { club in
+                        Label { Text(club.clubName ?? club.id) } icon: { logo(club.id) }
+                            .tag(String?.some(club.id))
                     }
-                    .pickerStyle(.inline)
+                } label: {
+                    Label { Text("Verein") } icon: {
+                        if let id = filter.clubID { logo(id) } else { Image(systemName: Self.allClubsSymbol) }
+                    }
                 }
+                .pickerStyle(.menu)
             }
+
             if filter.isActive {
-                Button("Filter zurücksetzen", systemImage: "xmark.circle") { state.setScheduleFilter(ScheduleFilter()) }
+                Section {
+                    Button("Filter zurücksetzen", systemImage: "xmark.circle") { state.setScheduleFilter(ScheduleFilter()) }
+                }
             }
         } label: {
             Image(systemName: filter.isActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
@@ -100,6 +110,14 @@ struct FilterMenu: View {
         .sensoryFeedback(.selection, trigger: filter)
         .accessibilityLabel("Filter")
         .accessibilityValue(filter.isActive ? ActiveFilterRow.summary(filter, state: state) : "Aus")
+        .task(id: state.clubs.map(\.id)) { if state.hasMultipleClubs { await state.loadClubLogos() } }
+    }
+
+    private static let allClubsSymbol = "shield.lefthalf.filled"
+
+    /// The club's own logo; a plain shield until it has loaded (or when the club has none).
+    private func logo(_ clubID: String) -> Image {
+        state.clubLogos[clubID].map { Image(uiImage: $0) } ?? Image(systemName: "shield.fill")
     }
 
     private func binding<T>(_ path: WritableKeyPath<ScheduleFilter, T>) -> Binding<T> {

@@ -69,6 +69,7 @@ final class AppState {
             unseenChanges = 2
             lastSync = .now.addingTimeInterval(-420)
             preferences.set(false, for: entries[3].id)
+            clubLogos = DemoData.clubLogos()
             // Not persisted, so screenshots never depend on an earlier run.
             storedScheduleFilter = ScheduleFilter(kind: DemoData.value(after: "-demoFilter").flatMap(KindFilter.init(rawValue:)) ?? .all,
                                                   clubID: DemoData.value(after: "-demoClub"))
@@ -226,6 +227,19 @@ final class AppState {
     }
 
     var clubs: [Club] { user?.info.activeClubs ?? [] }
+
+    /// Club logos sized for menu rows, where `AsyncImage` can't be used. Keyed by club ID.
+    private(set) var clubLogos: [String: UIImage] = [:]
+
+    /// Loads missing logos once; `URLSession`'s shared cache keeps them on disk.
+    func loadClubLogos() async {
+        for club in clubs where clubLogos[club.id] == nil {
+            guard let url = club.clubLogo,
+                  let (data, _) = try? await URLSession.shared.data(from: url),
+                  let image = UIImage(data: data) else { continue }
+            clubLogos[club.id] = image.menuIcon()
+        }
+    }
     var hasMultipleClubs: Bool { clubs.count > 1 }
 
     func clubName(_ id: String?) -> String? {
@@ -406,4 +420,16 @@ final class AppState {
     }
 
     private var statusLogged = false
+}
+
+extension UIImage {
+    /// Fits the image into a square menu glyph, keeping its own colors.
+    func menuIcon(side: CGFloat = 26) -> UIImage {
+        let scale = min(side / max(size.width, 1), side / max(size.height, 1))
+        let fitted = CGSize(width: size.width * scale, height: size.height * scale)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            draw(in: CGRect(x: (side - fitted.width) / 2, y: (side - fitted.height) / 2, width: fitted.width, height: fitted.height))
+        }
+        return image.withRenderingMode(.alwaysOriginal)
+    }
 }
