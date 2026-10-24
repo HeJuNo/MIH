@@ -16,6 +16,7 @@ final class SettingsStore: @unchecked Sendable {
         static let disabledCategories = "disabledChangeCategories"
         static let refreshMinutes = "backgroundRefreshMinutes"
         static let mapProvider = "mapProvider"
+        static let appearance = "appearanceMode"
         static let lastBackgroundRun = "lastBackgroundRun"
         static let loggingEnabled = "loggingEnabled"
         static let logLevel = "logLevel"
@@ -54,6 +55,11 @@ final class SettingsStore: @unchecked Sendable {
     var mapProvider: MapProvider {
         get { defaults.string(forKey: Key.mapProvider).flatMap(MapProvider.init(rawValue:)) ?? .apple }
         set { defaults.set(newValue.rawValue, forKey: Key.mapProvider) }
+    }
+
+    var appearance: AppearanceMode {
+        get { defaults.string(forKey: Key.appearance).flatMap(AppearanceMode.init(rawValue:)) ?? .system }
+        set { defaults.set(newValue.rawValue, forKey: Key.appearance) }
     }
 
     /// Shared by "Spiele & Trainings" and "Vergangene Termine"; survives relaunches.
@@ -138,6 +144,18 @@ enum KindFilter: String, Codable, CaseIterable, Identifiable {
         case .all: true
         case .games: e.idGame != nil
         case .practices: e.idPractice != nil
+        }
+    }
+}
+
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Hell"
+        case .dark: "Dunkel"
         }
     }
 }

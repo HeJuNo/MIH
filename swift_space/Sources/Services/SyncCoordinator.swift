@@ -14,10 +14,10 @@ enum SyncCoordinator {
 
         var summary: String {
             switch self {
-            case .notLoggedIn: "nicht angemeldet"
-            case let .baseline(n): "Ausgangsstand mit \(n) Terminen"
-            case let .synced(changes, notified): "\(changes.count) Änderung(en), \(notified) Benachrichtigung(en)"
-            case let .failed(message): "Fehler: \(message)"
+            case .notLoggedIn: "not signed in"
+            case let .baseline(n): "baseline with \(pluralized(n, "event"))"
+            case let .synced(changes, notified): "\(pluralized(changes.count, "change")), \(pluralized(notified, "notification"))"
+            case let .failed(message): "failed: \(message)"
             }
         }
     }
@@ -32,7 +32,7 @@ enum SyncCoordinator {
     static func run(_ env: AppEnvironment = .shared, reason: String, deadline: Date? = nil) async -> Outcome {
         let log = env.log
         guard env.session.loadToken() != nil, let user = env.session.loadUser() else {
-            log(.warning, .sync, "Synchronisierung (\(reason)) übersprungen: keine Anmeldung gespeichert")
+            log(.warning, .sync, "(\(reason)) skipped: not signed in")
             return .notLoggedIn
         }
         do {
@@ -42,17 +42,17 @@ enum SyncCoordinator {
             var prefs = env.settings.preferences
             let deliverable = result.changes.filter(env.settings.shouldNotify)
             if deliverable.count < result.changes.count {
-                log(.info, .notifications, "\(result.changes.count - deliverable.count) Änderung(en) ohne Benachrichtigung (Termin oder Kategorie ausgeschaltet)")
+                log(.info, .notifications, "\(pluralized(result.changes.count - deliverable.count, "change")) without notification (event or category muted)")
             }
             // Forget overrides for events that are gone, after filtering their removal notice.
             prefs.prune(keeping: Set(result.entries.map(\.id)))
             env.settings.preferences = prefs
 
             let posted = await env.notifier.post(deliverable)
-            log(.info, .sync, "Synchronisierung (\(reason)): \(result.entries.count) Termine, \(result.changes.count) Änderungen, \(posted) gemeldet")
+            log(.info, .sync, "(\(reason)): \(pluralized(result.entries.count, "event")), \(pluralized(result.changes.count, "change")), \(posted) notified")
             return result.wasBaseline ? .baseline(entries: result.entries.count) : .synced(changes: result.changes, notified: posted)
         } catch {
-            log(.error, .sync, "Synchronisierung (\(reason)) fehlgeschlagen: \(String(describing: error))")
+            log(.error, .sync, "(\(reason)) failed: \(String(describing: error))")
             return .failed(String(describing: error))
         }
     }

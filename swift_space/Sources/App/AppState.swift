@@ -36,6 +36,7 @@ final class AppState {
     private(set) var disabledCategories: Set<ChangeKind.Category> = []
     private(set) var refreshMinutes = 30
     private(set) var mapProvider: MapProvider = .apple
+    private(set) var appearance: AppearanceMode = .system
     private(set) var storedScheduleFilter = ScheduleFilter()
     private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     private(set) var backgroundRefreshStatus: UIBackgroundRefreshStatus = .available
@@ -107,7 +108,7 @@ final class AppState {
         await refreshSystemStatus()
         await reloadFromStore()
         guard isLoggedIn else { return }
-        env.log(.debug, .app, "App im Vordergrund, letzte Synchronisierung \(lastSync?.formatted(date: .abbreviated, time: .shortened) ?? "nie")")
+        env.log(.debug, .app, "In foreground, last sync \(lastSync?.formatted(date: .abbreviated, time: .shortened) ?? "never")")
         await BackgroundRefresh.logPending()
         // Avoid hammering the API when quickly switching apps.
         if (lastSync.map { Date().timeIntervalSince($0) > 5 * 60 }) ?? true {
@@ -166,7 +167,7 @@ final class AppState {
         guard var current = user else { return }
         isImportingHistory = true
         historyMessage = nil
-        env.log(.info, .history, "Vergangene Termine: Import gestartet")
+        env.log(.info, .history, "Import started")
         defer { isImportingHistory = false }
         do {
             // Sessions from older app versions didn't store the season: refresh the profile once.
@@ -195,7 +196,7 @@ final class AppState {
             let added = archive.count - before
             historyMessage = added > 0 ? "\(added) vergangene Termine geladen." : "Alle vergangenen Termine sind bereits vorhanden."
             let perClub = Dictionary(grouping: past, by: { $0.clubID ?? "-" }).map { "\($0.key): \($0.value.count)" }.sorted()
-            env.log(.info, .history, "Web lieferte \(past.count) vergangene Termine (\(perClub.joined(separator: ", "))), neu im Archiv: \(added)")
+            env.log(.info, .history, "Web returned \(pluralized(past.count, "event")) (\(perClub.joined(separator: ", "))), new in archive: \(added)")
         } catch WebHistoryClient.WebError.loginFailed {
             historyMessage = "Anmeldung an der Web-Version fehlgeschlagen. Passwort prüfen."
         } catch APIError.rejected(let message) {
@@ -256,12 +257,12 @@ final class AppState {
         do {
             try await env.api.perform(endpoint)
         } catch {
-            env.log(.error, .status, "Status für \(entry.id) nicht gespeichert: \(error)")
+            env.log(.error, .status, "\(entry.id) not saved: \(error)")
             throw error
         }
-        env.log(.info, .status, "Status für \(entry.id) gesetzt: \(submission.status.map { StatusText.health($0.rawValue) } ?? "-")"
-                + (submission.attendance.map { ", Anwesenheit \(StatusText.availability($0))" } ?? "")
-                + ((submission.notes ?? "").isEmpty ? "" : ", mit Notiz"))
+        env.log(.info, .status, "\(entry.id) set: \(submission.status.map { StatusText.health($0.rawValue) } ?? "-")"
+                + (submission.attendance.map { ", attendance \(StatusText.availability($0))" } ?? "")
+                + ((submission.notes ?? "").isEmpty ? "" : ", with note"))
         // Own change → baseline, so no notification echoes it back.
         await env.engine.applyLocalStatus(eventKey: entry.id, submission: submission)
         await reloadFromStore()
@@ -350,6 +351,7 @@ final class AppState {
         disabledCategories = env.settings.disabledCategories
         refreshMinutes = env.settings.refreshMinutes
         mapProvider = env.settings.mapProvider
+        appearance = env.settings.appearance
         storedScheduleFilter = env.settings.scheduleFilter
         loggingEnabled = env.settings.loggingEnabled
         logLevel = env.settings.logLevel
@@ -361,9 +363,9 @@ final class AppState {
     func setLoggingEnabled(_ on: Bool) {
         if on {
             env.settings.loggingEnabled = true
-            env.log(.info, .app, "Protokoll eingeschaltet (ab \(logLevel.title))")
+            env.log(.info, .app, "Logging enabled (from \(logLevel.title))")
         } else {
-            env.log(.info, .app, "Protokoll ausgeschaltet")
+            env.log(.info, .app, "Logging disabled")
             env.settings.loggingEnabled = false
             if selectedTab == .log { selectedTab = .settings }
         }
@@ -403,6 +405,11 @@ final class AppState {
     func setMapProvider(_ p: MapProvider) {
         mapProvider = p
         env.settings.mapProvider = p
+    }
+
+    func setAppearance(_ a: AppearanceMode) {
+        appearance = a
+        env.settings.appearance = a
     }
 
     private func refreshSystemStatus() async {

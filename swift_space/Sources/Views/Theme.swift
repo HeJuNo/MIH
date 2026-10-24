@@ -28,6 +28,16 @@ extension Color {
     }
 }
 
+extension AppearanceMode {
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+}
+
 extension Event {
     var tint: Color { Color(hex: color) ?? (kind == .games ? Theme.accent : Theme.ice) }
     var isGame: Bool { idGame != nil }

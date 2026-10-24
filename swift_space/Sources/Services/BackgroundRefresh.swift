@@ -24,26 +24,26 @@ enum BackgroundRefresh {
     /// Must run before the app finishes launching.
     static func register() {
         let refresh = BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshID, using: nil) { task in
-            run(task, kind: "Hintergrundaktualisierung", budget: refreshBudget)
+            run(task, kind: "Refresh", budget: refreshBudget)
         }
         let processing = BGTaskScheduler.shared.register(forTaskWithIdentifier: processingID, using: nil) { task in
-            run(task, kind: "Hintergrundwartung", budget: processingBudget)
+            run(task, kind: "Maintenance", budget: processingBudget)
         }
         log(refresh && processing ? .debug : .error, .background,
-            "Registrierung: Aktualisierung \(refresh ? "ok" : "fehlgeschlagen"), Wartung \(processing ? "ok" : "fehlgeschlagen")")
+            "Registration: refresh \(refresh ? "ok" : "failed"), maintenance \(processing ? "ok" : "failed")")
     }
 
     static func schedule(_ env: AppEnvironment = .shared) {
         guard env.session.loadToken() != nil else {
             BGTaskScheduler.shared.cancelAllTaskRequests()
-            log(.info, .background, "Nicht angemeldet: keine Hintergrundläufe geplant")
+            log(.info, .background, "Not signed in: no runs scheduled")
             return
         }
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: legacyRefreshID)
 
         let refresh = BGAppRefreshTaskRequest(identifier: refreshID)
         refresh.earliestBeginDate = Date(timeIntervalSinceNow: TimeInterval(max(15, env.settings.refreshMinutes) * 60))
-        submit(refresh, "Aktualisierung")
+        submit(refresh, "Refresh")
 
         // Resubmitting replaces the queued request, so doing it on every trip to the background
         // pushed the processing window 2 h out each time and it never came due during the day.
@@ -53,7 +53,7 @@ enum BackgroundRefresh {
             processing.requiresNetworkConnectivity = true
             processing.requiresExternalPower = false
             processing.earliestBeginDate = Date(timeIntervalSinceNow: 2 * 3600)
-            submit(processing, "Wartung")
+            submit(processing, "Maintenance")
         }
     }
 
@@ -61,15 +61,15 @@ enum BackgroundRefresh {
         do {
             try BGTaskScheduler.shared.submit(request)
             let at = request.earliestBeginDate?.formatted(date: .omitted, time: .shortened) ?? "-"
-            log(.debug, .background, "\(name) geplant, frühestens \(at)")
+            log(.debug, .background, "\(name) scheduled, no earlier than \(at)")
         } catch {
             // Always fails in the simulator, and when Background App Refresh is off.
-            log(.error, .background, "\(name) konnte nicht geplant werden: \(describe(error))")
+            log(.error, .background, "\(name) could not be scheduled: \(describe(error))")
         }
     }
 
     private static func run(_ task: BGTask, kind: String, budget: TimeInterval) {
-        log(.info, .background, "\(kind) gestartet")
+        log(.info, .background, "\(kind) started")
         AppEnvironment.shared.settings.lastBackgroundRun = .now
         schedule()   // chain the next wake-up first, in case we are cut short
 
@@ -79,12 +79,12 @@ enum BackgroundRefresh {
             return outcome
         }
         task.expirationHandler = {
-            log(.warning, .background, "\(kind): von iOS vorzeitig beendet")
+            log(.warning, .background, "\(kind): iOS ended it early")
             work.cancel()
         }
         Task {
             let outcome = await work.value
-            log(.info, .background, "\(kind) beendet: \(outcome.summary)")
+            log(.info, .background, "\(kind) finished: \(outcome.summary)")
             task.setTaskCompleted(success: outcome.isSuccess)
         }
     }
@@ -93,17 +93,17 @@ enum BackgroundRefresh {
     static func logPending() async {
         let pending = await BGTaskScheduler.shared.pendingTaskRequests()
         let list = pending.map { r in
-            "\(r.identifier == refreshID ? "Aktualisierung" : r.identifier == processingID ? "Wartung" : r.identifier) ab \(r.earliestBeginDate?.formatted(date: .omitted, time: .shortened) ?? "sofort")"
+            "\(r.identifier == refreshID ? "Refresh" : r.identifier == processingID ? "Maintenance" : r.identifier) at \(r.earliestBeginDate?.formatted(date: .omitted, time: .shortened) ?? "now")"
         }
-        log(.debug, .background, list.isEmpty ? "Keine Hintergrundläufe vorgemerkt" : "Vorgemerkt: " + list.joined(separator: ", "))
+        log(.debug, .background, list.isEmpty ? "No runs queued" : "Queued: " + list.joined(separator: ", "))
     }
 
     private static func describe(_ error: Error) -> String {
         guard let e = error as? BGTaskScheduler.Error else { return error.localizedDescription }
         switch e.code {
-        case .unavailable: return "nicht verfügbar (Hintergrundaktualisierung aus oder Simulator)"
-        case .tooManyPendingTaskRequests: return "zu viele vorgemerkte Läufe"
-        case .notPermitted: return "nicht erlaubt (Info.plist)"
+        case .unavailable: return "unavailable (Background App Refresh off, or simulator)"
+        case .tooManyPendingTaskRequests: return "too many queued runs"
+        case .notPermitted: return "not permitted (Info.plist)"
         default: return e.localizedDescription
         }
     }

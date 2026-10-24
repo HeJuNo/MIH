@@ -13,6 +13,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 accountSection
+                appearanceSection
                 notificationSection
                 mapsSection
                 backgroundSection
@@ -159,6 +160,18 @@ struct SettingsView: View {
         default:
             Button { Task { await state.requestNotificationPermission() } } label: {
                 Label { Text("Mitteilungen erlauben") } icon: { SettingsIcon(symbol: "bell", color: Theme.warning) }
+            }
+        }
+    }
+
+    // MARK: Appearance
+
+    private var appearanceSection: some View {
+        Section {
+            Picker(selection: Binding(get: { state.appearance }, set: { state.setAppearance($0) })) {
+                ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+            } label: {
+                Label { Text("Darstellung") } icon: { SettingsIcon(symbol: "circle.lefthalf.filled", color: .gray) }
             }
         }
     }

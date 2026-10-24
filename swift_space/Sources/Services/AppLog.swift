@@ -117,8 +117,8 @@ extension LogLevel {
         switch self {
         case .debug: "Debug"
         case .info: "Info"
-        case .warning: "Warnung"
-        case .error: "Fehler"
+        case .warning: "Warning"
+        case .error: "Error"
         }
     }
 
@@ -145,12 +145,12 @@ extension LogArea {
     var title: String {
         switch self {
         case .app: "App"
-        case .sync: "Synchronisierung"
-        case .background: "Hintergrund"
-        case .network: "Netzwerk"
-        case .changes: "Änderungen"
-        case .notifications: "Benachrichtigungen"
-        case .history: "Vergangene Termine"
+        case .sync: "Sync"
+        case .background: "Background"
+        case .network: "Network"
+        case .changes: "Changes"
+        case .notifications: "Notifications"
+        case .history: "History"
         case .status: "Status"
         }
     }

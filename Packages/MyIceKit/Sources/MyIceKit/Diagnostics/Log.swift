@@ -35,3 +35,12 @@ public struct LogSink: Sendable {
         write(level, area, message())
     }
 }
+
+/// "no changes" / "1 change" / "N changes" — a plain-English count for diagnostic messages.
+public func pluralized(_ count: Int, _ singular: String, _ plural: String? = nil) -> String {
+    switch count {
+    case 0: "no \(plural ?? singular + "s")"
+    case 1: "1 \(singular)"
+    default: "\(count) \(plural ?? singular + "s")"
+    }
+}

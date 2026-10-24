@@ -26,7 +26,7 @@ final class ChangeNotifier: Sendable {
         let center = UNUserNotificationCenter.current()
         let status = await center.notificationSettings().authorizationStatus
         guard status == .authorized || status == .provisional || status == .ephemeral else {
-            log(.warning, .notifications, "\(changes.count) Änderung(en) nicht gemeldet: Benachrichtigungen sind nicht erlaubt (Status \(status.rawValue))")
+            log(.warning, .notifications, "\(pluralized(changes.count, "change")) not delivered: permission denied (status \(status.rawValue))")
             return 0
         }
 
@@ -34,9 +34,9 @@ final class ChangeNotifier: Sendable {
         for change in shown {
             do {
                 try await center.add(request(for: change))
-                log(.debug, .notifications, "Gemeldet: \(ChangeFormatter.eventLabel(change)) – \(ChangeFormatter.text(for: change).headline)")
+                log(.debug, .notifications, "Delivered: \(ChangeFormatter.eventLabel(change)) – \(ChangeFormatter.text(for: change).headline)")
             } catch {
-                log(.error, .notifications, "Konnte Benachrichtigung nicht anlegen: \(error.localizedDescription)")
+                log(.error, .notifications, "Could not create: \(error.localizedDescription)")
             }
         }
         let overflow = changes.count - shown.count
@@ -47,7 +47,7 @@ final class ChangeNotifier: Sendable {
             content.threadIdentifier = "summary"
             try? await center.add(UNNotificationRequest(identifier: "summary-\(UUID())", content: content, trigger: nil))
         }
-        log(.info, .notifications, "\(shown.count) Benachrichtigung(en) gesendet" + (overflow > 0 ? ", \(overflow) zusammengefasst" : ""))
+        log(.info, .notifications, "\(shown.count) sent" + (overflow > 0 ? ", \(overflow) grouped" : ""))
         return shown.count + (overflow > 0 ? 1 : 0)
     }
 

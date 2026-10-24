@@ -106,20 +106,20 @@ enum DemoData {
 
     static func logEntries(now: Date = .now) -> [LogEntry] {
         let lines: [(TimeInterval, LogLevel, LogArea, String)] = [
-            (-20, .info, .background, "Hintergrundaktualisierung beendet: 2 Änderung(en), 2 Benachrichtigung(en)"),
-            (-21, .info, .notifications, "2 Benachrichtigung(en) gesendet"),
+            (-20, .info, .background, "Refresh finished: 2 changes, 2 notifications"),
+            (-21, .info, .notifications, "2 sent"),
             (-22, .debug, .changes, "p12 U15 Trockentraining: players(added: [], removed: [\"Lukas Gruber\"])"),
-            (-23, .info, .changes, "Synchronisierung: 2 Änderung(en) erkannt"),
-            (-24, .info, .sync, "Fertig in 3.8 s: 6 Termine, 2 Änderungen, Archiv 3"),
-            (-26, .info, .sync, "Details: 6 von 6 geladen"),
-            (-29, .debug, .network, "/getevent games/21 club=1 HTTP 200, 18342 Bytes, 0.41 s"),
-            (-30, .debug, .network, "/refreshdata club=1 HTTP 200, 40211 Bytes, 0.92 s"),
-            (-31, .info, .sync, "Start: Vereine 1, 2, gespeichert 6 Termine"),
-            (-32, .info, .background, "Hintergrundaktualisierung gestartet"),
-            (-1900, .warning, .background, "Hintergrundaktualisierung: von iOS vorzeitig beendet"),
-            (-1910, .warning, .sync, "Details: 4 von 6 geladen (Rest behält den letzten Stand)"),
-            (-5400, .error, .network, "/refreshdata club=2 fehlgeschlagen nach 30.01 s: Zeitüberschreitung bei der Anforderung."),
-            (-7200, .info, .app, "App gestartet"),
+            (-23, .info, .changes, "Sync: 2 changes detected"),
+            (-24, .info, .sync, "Finished in 3.8 s: 6 events, 2 changes, archive 3"),
+            (-26, .info, .sync, "Details: 6 of 6 loaded"),
+            (-29, .debug, .network, "/getevent games/21 club=1 HTTP 200, 18342 bytes, 0.41 s"),
+            (-30, .debug, .network, "/refreshdata club=1 HTTP 200, 40211 bytes, 0.92 s"),
+            (-31, .info, .sync, "Start: clubs 1, 2, stored 6 events"),
+            (-32, .info, .background, "Refresh started"),
+            (-1900, .warning, .background, "Refresh: iOS ended it early"),
+            (-1910, .warning, .sync, "Details: 4 of 6 loaded (rest keeps its last value)"),
+            (-5400, .error, .network, "/refreshdata club=2 failed after 30.01 s: The request timed out."),
+            (-7200, .info, .app, "Launched"),
         ]
         return lines.map { LogEntry(date: now.addingTimeInterval($0.0), level: $0.1, area: $0.2, message: $0.3) }
     }

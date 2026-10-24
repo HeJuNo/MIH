@@ -73,20 +73,20 @@ public final class APIClient: Sendable {
             (data, response) = try await transport.data(for: await makeRequest(endpoint))
         } catch {
             let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
-            log(cancelled ? .warning : .error, .network, "\(label) \(cancelled ? "abgebrochen" : "fehlgeschlagen") nach \(elapsed()): \(error.localizedDescription)")
+            log(cancelled ? .warning : .error, .network, "\(label) \(cancelled ? "cancelled" : "failed") after \(elapsed()): \(error.localizedDescription)")
             throw error
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if !(200..<300).contains(status) {
-            log(.error, .network, "\(label) HTTP \(status) nach \(elapsed())")
+            log(.error, .network, "\(label) HTTP \(status) after \(elapsed())")
             throw APIError.http(status: status)
         }
         do {
             let value = try decoder.decode(T.self, from: JSONNormalizer.normalize(data))
-            log(.debug, .network, "\(label) HTTP \(status), \(data.count) Bytes, \(elapsed())")
+            log(.debug, .network, "\(label) HTTP \(status), \(data.count) bytes, \(elapsed())")
             return value
         } catch {
-            log(.error, .network, "\(label) nicht lesbar: \(Self.describe(error))")
+            log(.error, .network, "\(label) unreadable: \(Self.describe(error))")
             throw APIError.decoding(Self.describe(error))
         }
     }

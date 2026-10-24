@@ -58,7 +58,7 @@ public actor SyncEngine {
     /// skipped details keep their last known value and get priority next time.
     public func sync(clubIDs: [String], playerID: Int?, now: Date = .now, deadline: Date? = nil) async throws -> Result {
         if let inFlight {
-            log(.debug, .sync, "Synchronisierung läuft bereits, warte auf Ergebnis")
+            log(.debug, .sync, "Already running, waiting for result")
             return try await inFlight.value
         }
         let task = Task {
@@ -74,7 +74,7 @@ public actor SyncEngine {
         state.lastAttempt = now
         let clubs = Array(NSOrderedSet(array: rawClubs.filter { !$0.isEmpty })) as! [String]
         let began = Date()
-        log(.info, .sync, "Start: Vereine \(clubs.joined(separator: ", ")), gespeichert \(state.entries.count) Termine")
+        log(.info, .sync, "Start: clubs \(clubs.joined(separator: ", ")), stored \(pluralized(state.entries.count, "event"))")
 
         guard let playerID else { return try await fail(&state, SyncError.missingPlayer) }
         guard !clubs.isEmpty else { return try await fail(&state, SyncError.noClubs) }
@@ -86,7 +86,7 @@ public actor SyncEngine {
             for club in clubs {
                 let payload: SessionPayload = try await api.send(.refreshData(clubID: club))
                 let rows = payload.appData ?? []
-                log(.debug, .sync, "Verein \(club): \(rows.count) Termine")
+                log(.debug, .sync, "Club \(club): \(pluralized(rows.count, "event"))")
                 for event in rows where seen.insert(event.id).inserted {
                     events.append((event, club))
                 }
@@ -105,7 +105,7 @@ public actor SyncEngine {
             .prefix(configuration.maxDetailFetches)
         let details = await fetchDetails(wanted.map { ($0.0, $0.1) }, playerID: playerID, deadline: deadline)
         let level: LogLevel = details.count < wanted.count ? .warning : .info
-        log(level, .sync, "Details: \(details.count) von \(wanted.count) geladen" + (details.count < wanted.count ? " (Rest behält den letzten Stand)" : ""))
+        log(level, .sync, "Details: \(details.count) of \(wanted.count) loaded" + (details.count < wanted.count ? " (rest keeps its last value)" : ""))
 
         let fetched: [TrackedEntry] = events.map { event, club in
             if let fresh = details[event.id] {
@@ -157,10 +157,10 @@ public actor SyncEngine {
         await store.save(state)
 
         if isBaseline {
-            log(.info, .sync, "Ausgangsstand gespeichert: \(entries.count) Termine (noch keine Änderungen gemeldet)")
+            log(.info, .sync, "Baseline saved: \(pluralized(entries.count, "event")) (no changes reported yet)")
         }
-        logChanges(changes, source: "Synchronisierung")
-        log(.info, .sync, String(format: "Fertig in %.1f s: %d Termine, %d Änderungen, Archiv %d", Date().timeIntervalSince(began),
+        logChanges(changes, source: "Sync")
+        log(.info, .sync, String(format: "Finished in %.1f s: %d events, %d changes, archive %d", Date().timeIntervalSince(began),
                                  entries.count, changes.count, archive.count))
         return Result(entries: entries, changes: changes, wasBaseline: isBaseline)
     }
@@ -168,13 +168,13 @@ public actor SyncEngine {
     private func fail(_ state: inout SyncState, _ error: Error) async throws -> Result {
         state.lastError = String(describing: error)
         await store.save(state)
-        log(error is CancellationError ? .warning : .error, .sync, "Abgebrochen: \(String(describing: error))")
+        log(error is CancellationError ? .warning : .error, .sync, "Aborted: \(String(describing: error))")
         throw error
     }
 
     private func logChanges(_ changes: [EventChange], source: String) {
         guard !changes.isEmpty else { return }
-        log(.info, .changes, "\(source): \(changes.count) Änderung(en) erkannt")
+        log(.info, .changes, "\(source): \(pluralized(changes.count, "change")) detected")
         for c in changes {
             log(.debug, .changes, "\(c.eventKey) \(c.eventSubtitle ?? "") \(c.eventTitle): \(c.kind)")
         }
@@ -228,7 +228,7 @@ public actor SyncEngine {
         let changes: [EventChange] = try await exclusive {
             await self.storeDetail(detail, key: key, fetchedAt: fetchedAt)
         }
-        logChanges(changes, source: "Detailansicht")
+        logChanges(changes, source: "Detail view")
         return detail
     }
 
@@ -269,7 +269,7 @@ public actor SyncEngine {
         archive += past.filter { !live.contains($0.id) && !known.contains($0.id) }
         state.archive = Self.trimmed(archive, now: now)
         await store.save(state)
-        log(.info, .history, "Archiv: \(past.count) vergangene Termine erhalten, jetzt \(state.archive?.count ?? 0)")
+        log(.info, .history, "Received \(pluralized(past.count, "event")), now \(state.archive?.count ?? 0)")
     }
 
     /// Empties the list of detected changes.
