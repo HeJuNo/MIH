@@ -50,6 +50,7 @@ enum SyncCoordinator {
 
             let posted = await env.notifier.post(deliverable)
             log(.info, .sync, "(\(reason)): \(pluralized(result.entries.count, "event")), \(pluralized(result.changes.count, "change")), \(posted) notified")
+            await env.calendarSync.run(reason: reason, deadline: deadline)
             return result.wasBaseline ? .baseline(entries: result.entries.count) : .synced(changes: result.changes, notified: posted)
         } catch {
             log(.error, .sync, "(\(reason)) failed: \(String(describing: error))")

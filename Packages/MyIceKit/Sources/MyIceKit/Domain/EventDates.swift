@@ -37,6 +37,13 @@ public enum EventDates {
         return Calendar.current.date(bySettingHour: hm.first ?? 0, minute: hm.dropFirst().first ?? 0, second: 0, of: day)
     }
 
+    /// Prefer `datetime`'s day combined with `time_end`; falls back to `date` + `time_end`.
+    public static func end(of event: Event) -> Date? {
+        guard let day = parseDateTime(event.datetime).map(Calendar.current.startOfDay) ?? parseDay(event.date) else { return nil }
+        guard let hm = event.timeEnd?.split(separator: ":").compactMap({ Int($0) }), hm.count >= 2 else { return nil }
+        return Calendar.current.date(bySettingHour: hm[0], minute: hm[1], second: 0, of: day)
+    }
+
     /// `HH:MM:SS` → `HH:MM`.
     public static func shortTime(_ raw: String?) -> String {
         guard let raw else { return "" }

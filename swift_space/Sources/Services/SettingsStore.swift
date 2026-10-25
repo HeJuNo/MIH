@@ -22,6 +22,10 @@ final class SettingsStore: @unchecked Sendable {
         static let logLevel = "logLevel"
         static let disabledLogAreas = "disabledLogAreas"
         static let scheduleFilter = "scheduleFilter"
+        static let calendarSyncEnabled = "calendarSyncEnabled"
+        static let calendarIdentifier = "calendarSyncCalendarIdentifier"
+        static let calendarTitlePrefixEnabled = "calendarSyncTitlePrefixEnabled"
+        static let calendarTitlePrefix = "calendarSyncTitlePrefix"
     }
 
     /// When iOS last woke the app for a background run (shown in the settings).
@@ -60,6 +64,28 @@ final class SettingsStore: @unchecked Sendable {
     var appearance: AppearanceMode {
         get { defaults.string(forKey: Key.appearance).flatMap(AppearanceMode.init(rawValue:)) ?? .system }
         set { defaults.set(newValue.rawValue, forKey: Key.appearance) }
+    }
+
+    /// "Kalendersynchronisation" in Settings.
+    var calendarSyncEnabled: Bool {
+        get { defaults.bool(forKey: Key.calendarSyncEnabled) }
+        set { defaults.set(newValue, forKey: Key.calendarSyncEnabled) }
+    }
+
+    /// `EKCalendar.calendarIdentifier` of the chosen target calendar; nil = auto-create/use the dedicated one.
+    var calendarIdentifier: String? {
+        get { defaults.string(forKey: Key.calendarIdentifier) }
+        set { defaults.set(newValue, forKey: Key.calendarIdentifier) }
+    }
+
+    var calendarTitlePrefixEnabled: Bool {
+        get { defaults.bool(forKey: Key.calendarTitlePrefixEnabled) }
+        set { defaults.set(newValue, forKey: Key.calendarTitlePrefixEnabled) }
+    }
+
+    var calendarTitlePrefix: String {
+        get { defaults.string(forKey: Key.calendarTitlePrefix) ?? "" }
+        set { defaults.set(newValue, forKey: Key.calendarTitlePrefix) }
     }
 
     /// Shared by "Spiele & Trainings" and "Vergangene Termine"; survives relaunches.

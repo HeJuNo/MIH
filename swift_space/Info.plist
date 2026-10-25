@@ -29,6 +29,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Damit Spiele und Trainings in deinem iOS-Kalender erscheinen können.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

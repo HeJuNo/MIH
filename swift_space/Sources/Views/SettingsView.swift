@@ -1,3 +1,4 @@
+import EventKit
 import MyIceKit
 import SwiftUI
 import UserNotifications
@@ -15,6 +16,7 @@ struct SettingsView: View {
                 accountSection
                 appearanceSection
                 notificationSection
+                calendarSection
                 mapsSection
                 backgroundSection
                 logSection
@@ -172,6 +174,62 @@ struct SettingsView: View {
                 ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
             } label: {
                 Label { Text("Darstellung") } icon: { SettingsIcon(symbol: "circle.lefthalf.filled", color: .gray) }
+            }
+        }
+    }
+
+    // MARK: Calendar sync
+
+    private var calendarSection: some View {
+        Section {
+            calendarPermissionRow
+
+            Toggle(isOn: Binding(get: { state.calendarSyncEnabled }, set: { state.setCalendarSyncEnabled($0) })) {
+                Label { Text("Kalendersynchronisation") } icon: { SettingsIcon(symbol: "calendar.badge.clock", color: Theme.accent) }
+            }
+
+            if state.calendarSyncEnabled {
+                Picker(selection: Binding(get: { state.calendarIdentifier }, set: { state.setCalendarIdentifier($0) })) {
+                    Text("Automatisch (\(CalendarSync.defaultCalendarTitle))").tag(nil as String?)
+                    ForEach(state.calendarOptions, id: \.id) { option in
+                        Text(option.title).tag(option.id as String?)
+                    }
+                } label: {
+                    Label { Text("Kalender") } icon: { SettingsIcon(symbol: "calendar", color: .gray) }
+                }
+
+                Toggle(isOn: Binding(get: { state.calendarTitlePrefixEnabled }, set: { state.setCalendarTitlePrefixEnabled($0) })) {
+                    Label { Text("Eigenes Präfix") } icon: { SettingsIcon(symbol: "textformat", color: .gray) }
+                }
+                if state.calendarTitlePrefixEnabled {
+                    TextField("z. B. 🏒", text: Binding(get: { state.calendarTitlePrefix },
+                                                         set: { state.setCalendarTitlePrefix($0) }))
+                }
+            }
+        } header: {
+            Text("Kalender")
+        } footer: {
+            Text("Spiegelt Spiele und Trainings der laufenden Saison inklusive Treffpunkt, Abfahrt und Aufgebot in einen iOS-Kalender.")
+        }
+        .task { await state.loadCalendarOptions() }
+    }
+
+    @ViewBuilder private var calendarPermissionRow: some View {
+        switch state.calendarAuthStatus {
+        case .fullAccess:
+            Label { Text("Kalenderzugriff erlaubt") } icon: { SettingsIcon(symbol: "checkmark", color: Theme.positive) }
+        case .denied, .restricted:
+            Button { Task { await state.requestCalendarAccess() } } label: {
+                Label {
+                    VStack(alignment: .leading) {
+                        Text("Kalenderzugriff deaktiviert")
+                        Text("In den iOS-Einstellungen erlauben").font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: { SettingsIcon(symbol: "exclamationmark", color: Theme.alert) }
+            }
+        default:
+            Button { Task { await state.requestCalendarAccess() } } label: {
+                Label { Text("Kalenderzugriff erlauben") } icon: { SettingsIcon(symbol: "calendar.badge.plus", color: Theme.warning) }
             }
         }
     }

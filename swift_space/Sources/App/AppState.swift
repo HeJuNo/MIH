@@ -1,3 +1,4 @@
+import EventKit
 import Foundation
 import MyIceKit
 import Observation
@@ -41,6 +42,12 @@ final class AppState {
     private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     private(set) var backgroundRefreshStatus: UIBackgroundRefreshStatus = .available
     private(set) var lastBackgroundRun: Date?
+    private(set) var calendarSyncEnabled = false
+    private(set) var calendarTitlePrefixEnabled = false
+    private(set) var calendarTitlePrefix = ""
+    private(set) var calendarIdentifier: String?
+    private(set) var calendarAuthStatus: EKAuthorizationStatus = .notDetermined
+    private(set) var calendarOptions: [(id: String, title: String)] = []
 
     // Protocol
     private(set) var loggingEnabled = false
@@ -356,6 +363,10 @@ final class AppState {
         loggingEnabled = env.settings.loggingEnabled
         logLevel = env.settings.logLevel
         logAreas = env.settings.logAreas
+        calendarSyncEnabled = env.settings.calendarSyncEnabled
+        calendarTitlePrefixEnabled = env.settings.calendarTitlePrefixEnabled
+        calendarTitlePrefix = env.settings.calendarTitlePrefix
+        calendarIdentifier = env.settings.calendarIdentifier
     }
 
     // MARK: Protocol
@@ -412,6 +423,59 @@ final class AppState {
         env.settings.appearance = a
     }
 
+    // MARK: Calendar sync
+
+    func requestCalendarAccess() async {
+        if calendarAuthStatus == .denied || calendarAuthStatus == .restricted {
+            if let url = URL(string: UIApplication.openSettingsURLString) { await UIApplication.shared.open(url) }
+            return
+        }
+        _ = await env.calendarSync.requestAccess()
+        await refreshSystemStatus()
+    }
+
+    func setCalendarSyncEnabled(_ on: Bool) {
+        calendarSyncEnabled = on
+        env.settings.calendarSyncEnabled = on
+        Task {
+            if on {
+                if calendarAuthStatus != .fullAccess { await requestCalendarAccess() }
+                await syncCalendarNow()
+            } else {
+                await env.calendarSync.removeAll()
+            }
+        }
+    }
+
+    func setCalendarTitlePrefixEnabled(_ on: Bool) {
+        calendarTitlePrefixEnabled = on
+        env.settings.calendarTitlePrefixEnabled = on
+        Task { await syncCalendarNow() }
+    }
+
+    func setCalendarTitlePrefix(_ prefix: String) {
+        calendarTitlePrefix = prefix
+        env.settings.calendarTitlePrefix = prefix
+        Task { await syncCalendarNow() }
+    }
+
+    func setCalendarIdentifier(_ id: String?) {
+        calendarIdentifier = id
+        env.settings.calendarIdentifier = id
+        Task { await syncCalendarNow() }
+    }
+
+    func loadCalendarOptions() async {
+        calendarOptions = await env.calendarSync.availableCalendars()
+        calendarIdentifier = env.settings.calendarIdentifier   // CalendarSync may have auto-created the dedicated one
+    }
+
+    private func syncCalendarNow() async {
+        guard calendarSyncEnabled else { return }
+        await env.calendarSync.run(reason: "settings")
+        await loadCalendarOptions()
+    }
+
     private func refreshSystemStatus() async {
         let refresh = UIApplication.shared.backgroundRefreshStatus
         let notifications = await env.notifier.authorizationStatus()
@@ -424,6 +488,7 @@ final class AppState {
         }
         backgroundRefreshStatus = refresh
         notificationStatus = notifications
+        calendarAuthStatus = EKEventStore.authorizationStatus(for: .event)
     }
 
     private var statusLogged = false
