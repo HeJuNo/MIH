@@ -239,16 +239,47 @@ final class AppState {
 
     /// Club logos sized for menu rows, where `AsyncImage` can't be used. Keyed by club ID.
     private(set) var clubLogos: [String: UIImage] = [:]
+    /// The same (cleaned, cropped) logos at their processed resolution, for the bigger
+    /// preview in the per-team settings screen — `clubLogos` is baked down to 26pt and
+    /// would look blurry scaled back up.
+    private(set) var clubLogoPreviews: [String: UIImage] = [:]
 
-    /// Loads missing logos once; `URLSession`'s shared cache keeps them on disk.
+    /// Loads missing logos once; `URLSession`'s shared cache keeps the remote ones on
+    /// disk. A user-supplied replacement (`setCustomLogo`) always wins over the remote one.
     func loadClubLogos() async {
         for club in clubs where clubLogos[club.id] == nil {
-            guard let url = club.clubLogo,
-                  let (data, _) = try? await URLSession.shared.data(from: url),
-                  let image = UIImage(data: data) else { continue }
-            clubLogos[club.id] = image.menuIcon()
+            let cleaned: UIImage?
+            if let custom = env.clubLogoStore.load(club.id) {
+                cleaned = LogoProcessing.cleaned(custom)
+            } else if let url = club.clubLogo, let (data, _) = try? await URLSession.shared.data(from: url) {
+                cleaned = UIImage(data: data).map(LogoProcessing.cleaned)
+            } else {
+                cleaned = nil
+            }
+            guard let cleaned else { continue }
+            clubLogoPreviews[club.id] = cleaned
+            clubLogos[club.id] = cleaned.menuIcon()
         }
     }
+
+    /// Replaces (or, with `nil`, clears back to) the club's logo; for crests the automatic
+    /// white-background removal can't clean up on its own.
+    func setCustomLogo(_ image: UIImage?, for clubID: String) {
+        if let image {
+            env.clubLogoStore.save(image, for: clubID)
+            let cleaned = LogoProcessing.cleaned(image)
+            clubLogoPreviews[clubID] = cleaned
+            clubLogos[clubID] = cleaned.menuIcon()
+        } else {
+            env.clubLogoStore.remove(clubID)
+            clubLogos[clubID] = nil
+            clubLogoPreviews[clubID] = nil
+            Task { await loadClubLogos() }
+        }
+    }
+
+    func hasCustomLogo(_ clubID: String) -> Bool { env.clubLogoStore.load(clubID) != nil }
+
     var hasMultipleClubs: Bool { clubs.count > 1 }
 
     func clubName(_ id: String?) -> String? {

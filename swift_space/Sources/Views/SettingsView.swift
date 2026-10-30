@@ -1,5 +1,6 @@
 import EventKit
 import MyIceKit
+import PhotosUI
 import SwiftUI
 import UserNotifications
 
@@ -45,17 +46,11 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
 
                 ForEach(state.clubs) { club in
-                    HStack(spacing: 12) {
-                        AsyncImage(url: club.clubLogo) { $0.resizable().scaledToFit() } placeholder: {
-                            Image(systemName: "shield.fill").foregroundStyle(.tint)
-                        }
-                        .frame(width: 26, height: 26)
-                        Text(club.clubName ?? club.id).font(.subheadline)
-                        Spacer()
-                        let count = state.entries.filter { $0.clubID == club.id }.count
-                        Text(count == 1 ? "1 Termin" : "\(count) Termine").font(.caption).foregroundStyle(.secondary)
+                    NavigationLink(destination: ClubSettingsView(club: club)) {
+                        ClubSummaryRow(club: club)
                     }
                 }
+                .task { await state.loadClubLogos() }
 
                 Button {
                     askPassword = true
@@ -205,21 +200,11 @@ struct SettingsView: View {
                     TextField("z. B. 🏒", text: Binding(get: { state.calendarTitlePrefix },
                                                          set: { state.setCalendarTitlePrefix($0) }))
                 }
-
-                ForEach(state.clubs) { club in
-                    LabeledContent(club.clubName ?? club.id) {
-                        TextField("Kürzel", text: Binding(
-                            get: { state.clubAbbreviations[club.id] ?? "" },
-                            set: { state.setClubAbbreviation($0, for: club.id) }
-                        ))
-                        .multilineTextAlignment(.trailing)
-                    }
-                }
             }
         } header: {
             Text("Kalender")
         } footer: {
-            Text("Spiegelt Spiele und Trainings der laufenden Saison inklusive Treffpunkt, Abfahrt und Aufgebot in einen iOS-Kalender. Das Kürzel ersetzt den Vereinsnamen in den Kalendertiteln.")
+            Text("Spiegelt Spiele und Trainings der laufenden Saison inklusive Treffpunkt, Abfahrt und Aufgebot in einen iOS-Kalender. Das Kürzel je Team (unter „Konto“) ersetzt den Vereinsnamen in den Kalendertiteln.")
         }
         .task { await state.loadCalendarOptions() }
     }
@@ -351,6 +336,98 @@ struct SettingsView: View {
             LabeledContent("Version", value: Bundle.main.versionString)
         } footer: {
             Text("MyHockey Data ist eine inoffizielle App und steht in keiner Verbindung zu den Betreibern von myice.hockey.")
+        }
+    }
+}
+
+/// The club row in "Konto": logo + name + term count, navigating to `ClubSettingsView`
+/// for the logo and Kürzel editors.
+private struct ClubSummaryRow: View {
+    @Environment(AppState.self) private var state
+    let club: Club
+
+    var body: some View {
+        HStack(spacing: 12) {
+            logoImage.frame(width: 26, height: 26)
+            Text(club.clubName ?? club.id).font(.subheadline)
+            Spacer()
+            let count = state.entries.filter { $0.clubID == club.id }.count
+            Text(count == 1 ? "1 Termin" : "\(count) Termine").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var logoImage: some View {
+        if let logo = state.clubLogos[club.id] {
+            Image(uiImage: logo).resizable().scaledToFit()
+        } else {
+            Image(systemName: "shield.fill").foregroundStyle(.tint)
+        }
+    }
+}
+
+/// One team's own settings, reached from its row under "Konto": its (auto-cleaned) logo,
+/// replaceable when the automatic cleanup can't cope, and its calendar Kürzel.
+private struct ClubSettingsView: View {
+    @Environment(AppState.self) private var state
+    let club: Club
+    @State private var pickerItem: PhotosPickerItem?
+
+    var body: some View {
+        Form {
+            Section {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        logoPreview
+                            .frame(width: 96, height: 96)
+                        PhotosPicker(selection: $pickerItem, matching: .images) {
+                            Label("Logo ersetzen", systemImage: "photo.badge.plus")
+                        }
+                        if state.hasCustomLogo(club.id) {
+                            Button(role: .destructive) {
+                                state.setCustomLogo(nil, for: club.id)
+                            } label: {
+                                Label("Logo zurücksetzen", systemImage: "arrow.counterclockwise")
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            } footer: {
+                Text("Ein heller Hintergrund wird automatisch entfernt und die Größe angepasst. Klappt das bei diesem Logo nicht, hier ein eigenes Bild wählen.")
+            }
+
+            Section {
+                TextField("Kürzel", text: Binding(
+                    get: { state.clubAbbreviations[club.id] ?? "" },
+                    set: { state.setClubAbbreviation($0, for: club.id) }
+                ))
+            } header: {
+                Text("Kürzel")
+            } footer: {
+                Text("Ersetzt den Vereinsnamen in Kalendertiteln, z. B. „Kürzel Eistraining“ statt „\(club.clubName ?? "Verein") Eistraining“.")
+            }
+        }
+        .navigationTitle(club.clubName ?? club.id)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await state.loadClubLogos() }
+        .onChange(of: pickerItem) {
+            Task {
+                guard let item = pickerItem,
+                      let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else { return }
+                state.setCustomLogo(image, for: club.id)
+                pickerItem = nil
+            }
+        }
+    }
+
+    @ViewBuilder private var logoPreview: some View {
+        if let logo = state.clubLogoPreviews[club.id] {
+            Image(uiImage: logo).resizable().scaledToFit()
+        } else {
+            Image(systemName: "shield.fill").resizable().scaledToFit().foregroundStyle(.tint).padding(24)
         }
     }
 }
