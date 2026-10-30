@@ -205,11 +205,21 @@ struct SettingsView: View {
                     TextField("z. B. 🏒", text: Binding(get: { state.calendarTitlePrefix },
                                                          set: { state.setCalendarTitlePrefix($0) }))
                 }
+
+                ForEach(state.clubs) { club in
+                    LabeledContent(club.clubName ?? club.id) {
+                        TextField("Kürzel", text: Binding(
+                            get: { state.clubAbbreviations[club.id] ?? "" },
+                            set: { state.setClubAbbreviation($0, for: club.id) }
+                        ))
+                        .multilineTextAlignment(.trailing)
+                    }
+                }
             }
         } header: {
             Text("Kalender")
         } footer: {
-            Text("Spiegelt Spiele und Trainings der laufenden Saison inklusive Treffpunkt, Abfahrt und Aufgebot in einen iOS-Kalender.")
+            Text("Spiegelt Spiele und Trainings der laufenden Saison inklusive Treffpunkt, Abfahrt und Aufgebot in einen iOS-Kalender. Das Kürzel ersetzt den Vereinsnamen in den Kalendertiteln.")
         }
         .task { await state.loadCalendarOptions() }
     }

@@ -45,6 +45,7 @@ final class AppState {
     private(set) var calendarSyncEnabled = false
     private(set) var calendarTitlePrefixEnabled = false
     private(set) var calendarTitlePrefix = ""
+    private(set) var clubAbbreviations: [String: String] = [:]
     private(set) var calendarIdentifier: String?
     private(set) var calendarAuthStatus: EKAuthorizationStatus = .notDetermined
     private(set) var calendarOptions: [(id: String, title: String)] = []
@@ -366,6 +367,7 @@ final class AppState {
         calendarSyncEnabled = env.settings.calendarSyncEnabled
         calendarTitlePrefixEnabled = env.settings.calendarTitlePrefixEnabled
         calendarTitlePrefix = env.settings.calendarTitlePrefix
+        clubAbbreviations = env.settings.clubAbbreviations
         calendarIdentifier = env.settings.calendarIdentifier
     }
 
@@ -456,6 +458,12 @@ final class AppState {
     func setCalendarTitlePrefix(_ prefix: String) {
         calendarTitlePrefix = prefix
         env.settings.calendarTitlePrefix = prefix
+        Task { await syncCalendarNow() }
+    }
+
+    func setClubAbbreviation(_ abbreviation: String, for clubID: String) {
+        clubAbbreviations[clubID] = abbreviation
+        env.settings.clubAbbreviations = clubAbbreviations
         Task { await syncCalendarNow() }
     }
 

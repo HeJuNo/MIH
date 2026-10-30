@@ -26,6 +26,7 @@ final class SettingsStore: @unchecked Sendable {
         static let calendarIdentifier = "calendarSyncCalendarIdentifier"
         static let calendarTitlePrefixEnabled = "calendarSyncTitlePrefixEnabled"
         static let calendarTitlePrefix = "calendarSyncTitlePrefix"
+        static let clubAbbreviations = "calendarSyncClubAbbreviations"
     }
 
     /// When iOS last woke the app for a background run (shown in the settings).
@@ -86,6 +87,17 @@ final class SettingsStore: @unchecked Sendable {
     var calendarTitlePrefix: String {
         get { defaults.string(forKey: Key.calendarTitlePrefix) ?? "" }
         set { defaults.set(newValue, forKey: Key.calendarTitlePrefix) }
+    }
+
+    /// Per-club short name ("Kürzel"), keyed by `club_id`; used instead of the full
+    /// club name in calendar event titles when set for that club.
+    var clubAbbreviations: [String: String] {
+        get { defaults.dictionary(forKey: Key.clubAbbreviations) as? [String: String] ?? [:] }
+        set { defaults.set(newValue, forKey: Key.clubAbbreviations) }
+    }
+
+    func clubAbbreviation(for clubID: String) -> String? {
+        clubAbbreviations[clubID].flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
     }
 
     /// Shared by "Spiele & Trainings" and "Vergangene Termine"; survives relaunches.

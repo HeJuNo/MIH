@@ -93,7 +93,7 @@ actor CalendarSync {
         for entry in tracked {
             if Task.isCancelled || deadline.map({ Date() >= $0 }) == true { break }
             var mapping = state.mapping[entry.id] ?? CalendarMapping()
-            upsert(entry, changes: changesByEvent[entry.id] ?? [], clubName: clubNames[entry.clubID ?? ""],
+            upsert(entry, changes: changesByEvent[entry.id] ?? [], team: clubNames[entry.clubID ?? ""],
                    calendar: calendar, mapping: &mapping)
             state.mapping[entry.id] = mapping.isEmpty ? nil : mapping
             written += 1
@@ -156,7 +156,7 @@ actor CalendarSync {
 
     // MARK: - Event fields
 
-    private func upsert(_ entry: TrackedEntry, changes: [EventChange], clubName: String?, calendar: EKCalendar,
+    private func upsert(_ entry: TrackedEntry, changes: [EventChange], team: String?, calendar: EKCalendar,
                         mapping: inout CalendarMapping) {
         guard let start = EventDates.start(of: entry.event) else {
             remove(mapping)
@@ -167,7 +167,7 @@ actor CalendarSync {
         let resolvedEnd = end ?? start.addingTimeInterval(90 * 60)
 
         let main = event(withID: mapping.mainEventID, calendar: calendar)
-        let mainTitle = title(for: entry, clubName: clubName)
+        let mainTitle = title(for: entry, team: team)
         main.title = mainTitle
         main.location = entry.event.place
         main.startDate = start
@@ -176,9 +176,9 @@ actor CalendarSync {
         try? store.save(main, span: .thisEvent, commit: false)
         mapping.mainEventID = main.eventIdentifier
 
-        upsertLinked(.meeting, entry: entry, mainStart: start, mainTitle: mainTitle, calendar: calendar,
+        upsertLinked(.meeting, entry: entry, mainStart: start, mainTitle: mainTitle, team: team, calendar: calendar,
                      identifier: mapping.meetingEventID) { mapping.meetingEventID = $0 }
-        upsertLinked(.departure, entry: entry, mainStart: start, mainTitle: mainTitle, calendar: calendar,
+        upsertLinked(.departure, entry: entry, mainStart: start, mainTitle: mainTitle, team: team, calendar: calendar,
                      identifier: mapping.departureEventID) { mapping.departureEventID = $0 }
     }
 
@@ -186,7 +186,7 @@ actor CalendarSync {
 
     /// Creates/updates/removes the "Treffpunkt"/"Abfahrt" sub-event: start = that time,
     /// end = the main event's start. Removed again once the detail no longer has a usable time.
-    private func upsertLinked(_ kind: LinkedKind, entry: TrackedEntry, mainStart: Date, mainTitle: String,
+    private func upsertLinked(_ kind: LinkedKind, entry: TrackedEntry, mainStart: Date, mainTitle: String, team: String?,
                               calendar: EKCalendar, identifier: String?, store writeID: (String?) -> Void) {
         let rawTime: String?, rawLabel: String?, fallbackLabel: String
         switch kind {
@@ -201,7 +201,9 @@ actor CalendarSync {
         }
         let label = nonEmpty(rawLabel) ?? fallbackLabel
         let ek = event(withID: identifier, calendar: calendar)
-        ek.title = "\(label): \(mainTitle)"
+        // "Treffpunkt"/"Abfahrt" mirrors the main title's "PREFIX TEAM …" shape instead of
+        // prefixing the full main title, e.g. main "PREFIX TEAM Eistraining" -> "PREFIX TEAM Treffpunkt".
+        ek.title = kind == .meeting ? linkedTitle(for: entry, team: team, label: label) : "\(label): \(mainTitle)"
         ek.location = locationText.isEmpty ? nil : locationText
         ek.startDate = start
         ek.endDate = max(mainStart, start.addingTimeInterval(60))
@@ -225,16 +227,28 @@ actor CalendarSync {
         [mapping.mainEventID, mapping.meetingEventID, mapping.departureEventID].compactMap { $0 }.forEach(removeEvent)
     }
 
-    private func title(for entry: TrackedEntry, clubName: String?) -> String {
+    private func title(for entry: TrackedEntry, team: String?) -> String {
         let base: String
         if entry.event.isGame {
             base = entry.event.name ?? "Termin"
-        } else if let clubName, !clubName.isEmpty {
-            base = "\(clubName) \(entry.event.name ?? "Training")"
+        } else if let team, !team.isEmpty {
+            base = "\(team) \(entry.event.name ?? "Training")"
         } else {
             base = entry.event.name ?? "Training"
         }
-        let withStatus = entry.isCancelled ? "Abgesagt: \(base)" : base
+        return decorated(base, cancelled: entry.isCancelled)
+    }
+
+    /// "Treffpunkt"/"Abfahrt" sub-event title: the main title's "PREFIX TEAM …" shape with
+    /// `label` ("Treffpunkt" by default, or the server's custom label) standing in for the
+    /// event name, e.g. main "PREFIX TEAM Eistraining" -> linked "PREFIX TEAM Treffpunkt".
+    private func linkedTitle(for entry: TrackedEntry, team: String?, label: String) -> String {
+        let base = team.flatMap { $0.isEmpty ? nil : "\($0) \(label)" } ?? label
+        return decorated(base, cancelled: entry.isCancelled)
+    }
+
+    private func decorated(_ base: String, cancelled: Bool) -> String {
+        let withStatus = cancelled ? "Abgesagt: \(base)" : base
         guard settings.calendarTitlePrefixEnabled, !settings.calendarTitlePrefix.isEmpty else { return withStatus }
         return "\(settings.calendarTitlePrefix) \(withStatus)"
     }
@@ -269,8 +283,12 @@ actor CalendarSync {
         return lines.joined(separator: "\n")
     }
 
+    /// The team label used in calendar titles: the configured "Kürzel" when set for that
+    /// club, the full club name otherwise.
     private func clubNames(for user: User?) -> [String: String] {
-        Dictionary(uniqueKeysWithValues: (user?.info.activeClubs ?? []).map { ($0.id, $0.clubName ?? "") })
+        Dictionary(uniqueKeysWithValues: (user?.info.activeClubs ?? []).map {
+            ($0.id, settings.clubAbbreviation(for: $0.id) ?? ($0.clubName ?? ""))
+        })
     }
 
     // MARK: - Free-text time parsing
