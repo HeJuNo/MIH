@@ -93,7 +93,8 @@ struct ChangeLine: View {
                         .font(.subheadline).foregroundStyle(.tint).lineLimit(2)
                 }
                 if !text.detail.isEmpty {
-                    Text(text.detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(4)
+                    Text(text.detail).font(.subheadline).foregroundStyle(.secondary)
+                        .lineLimit(change.kind.category == .people ? nil : 4)
                 }
             }
         }

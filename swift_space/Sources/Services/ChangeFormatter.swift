@@ -111,7 +111,7 @@ enum ChangeFormatter {
     }
 
     private static func list(_ names: [String]) -> String {
-        names.count <= 4 ? names.joined(separator: ", ") : names.prefix(3).joined(separator: ", ") + " und \(names.count - 3) weitere"
+        names.joined(separator: ", ")
     }
 
     private static func attendanceHeadline(_ v: Int) -> String {

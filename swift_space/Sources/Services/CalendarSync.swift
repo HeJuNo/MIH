@@ -193,7 +193,8 @@ actor CalendarSync {
         case .meeting: (rawTime, rawLabel, fallbackLabel) = (entry.detail?.meetingTime, entry.detail?.meeting, "Treffpunkt")
         case .departure: (rawTime, rawLabel, fallbackLabel) = (entry.detail?.departureTime, entry.detail?.departure, "Abfahrt")
         }
-        guard let (time, locationText) = leadingTime(rawTime), let start = combinedDate(time, day: mainStart) else {
+        let parsed = leadingTime(rawTime) ?? (kind == .meeting ? meetingTimeInNotes(entry.detail?.notes) : nil)
+        guard let (time, locationText) = parsed, let start = combinedDate(time, day: mainStart) else {
             if let identifier { removeEvent(identifier) }
             writeID(nil)
             return
@@ -280,6 +281,19 @@ actor CalendarSync {
         guard let t = EventDates.meaningfulTime(raw) else { return nil }
         guard let match = t.range(of: #"^\d{1,2}:\d{2}"#, options: .regularExpression) else { return nil }
         return (String(t[match]), t[match.upperBound...].trimmingCharacters(in: .whitespaces))
+    }
+
+    /// Falls back to a time written in the free-text notes, e.g. "Treffpunkt 11:45", "TP 11:45"
+    /// or "Treff: 11:45", for events where the structured `meeting_time` field isn't set.
+    /// No location is derived from this; the rest of the note isn't reliably a place.
+    private func meetingTimeInNotes(_ html: String?) -> (time: String, rest: String)? {
+        let text = PlainText.from(html: html)
+        guard !text.isEmpty,
+              let regex = try? NSRegularExpression(pattern: #"(?i)\b(?:treffpunkt|treff|tp)\b[^\d\n]{0,15}(\d{1,2}:\d{2})"#),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(match.range(at: 1), in: text)
+        else { return nil }
+        return (String(text[range]), "")
     }
 
     private func combinedDate(_ time: String, day: Date) -> Date? {
