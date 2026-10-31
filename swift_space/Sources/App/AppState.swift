@@ -248,28 +248,28 @@ final class AppState {
     /// disk. A user-supplied replacement (`setCustomLogo`) always wins over the remote one.
     func loadClubLogos() async {
         for club in clubs where clubLogos[club.id] == nil {
-            let cleaned: UIImage?
+            let resolved: UIImage?
             if let custom = env.clubLogoStore.load(club.id) {
-                cleaned = LogoProcessing.cleaned(custom)
+                resolved = custom   // already finalized by LogoEditorView — don't reprocess
             } else if let url = club.clubLogo, let (data, _) = try? await URLSession.shared.data(from: url) {
-                cleaned = UIImage(data: data).map(LogoProcessing.cleaned)
+                resolved = UIImage(data: data).map(LogoProcessing.cleaned)
             } else {
-                cleaned = nil
+                resolved = nil
             }
-            guard let cleaned else { continue }
-            clubLogoPreviews[club.id] = cleaned
-            clubLogos[club.id] = cleaned.menuIcon()
+            guard let resolved else { continue }
+            clubLogoPreviews[club.id] = resolved
+            clubLogos[club.id] = resolved.menuIcon()
         }
     }
 
-    /// Replaces (or, with `nil`, clears back to) the club's logo; for crests the automatic
-    /// white-background removal can't clean up on its own.
+    /// Replaces (or, with `nil`, clears back to) the club's logo with the result of
+    /// `LogoEditorView` — already cropped, rotated and background-cleaned as the user chose,
+    /// so it's stored and shown as-is rather than run through automatic cleanup again.
     func setCustomLogo(_ image: UIImage?, for clubID: String) {
         if let image {
             env.clubLogoStore.save(image, for: clubID)
-            let cleaned = LogoProcessing.cleaned(image)
-            clubLogoPreviews[clubID] = cleaned
-            clubLogos[clubID] = cleaned.menuIcon()
+            clubLogoPreviews[clubID] = image
+            clubLogos[clubID] = image.menuIcon()
         } else {
             env.clubLogoStore.remove(clubID)
             clubLogos[clubID] = nil

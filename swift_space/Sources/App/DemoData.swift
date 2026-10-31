@@ -18,6 +18,25 @@ enum DemoData {
     static var section: String? { value(after: "-demoSection") }
     static var opensStatus: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoStatus") }
     static var opensPast: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoPast") }
+    static var opensLogoEditor: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoLogoEditor") }
+    static var logoEditorStartsOnRetouch: Bool { ProcessInfo.processInfo.arguments.contains("-demoLogoEditorRetouch") }
+
+    /// A crest-on-a-white-card logo, deliberately shaped like what clubs actually ship, so
+    /// `-demoLogoEditor` also shows the automatic background removal doing real work.
+    static func sampleLogoForEditor() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 400, height: 400)).image { _ in
+            UIColor.white.setFill()
+            UIBezierPath(rect: CGRect(x: 0, y: 0, width: 400, height: 400)).fill()
+            UIColor.systemRed.setFill()
+            UIBezierPath(ovalIn: CGRect(x: 60, y: 60, width: 280, height: 280)).fill()
+            UIColor.white.setFill()
+            UIBezierPath(rect: CGRect(x: 185, y: 120, width: 30, height: 160)).fill()
+            let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 44, weight: .heavy), .foregroundColor: UIColor.white]
+            let text = "EHC"
+            let size = text.size(withAttributes: attrs)
+            text.draw(at: CGPoint(x: (400 - size.width) / 2, y: 300), withAttributes: attrs)
+        }
+    }
 
     static let user = User(id: "1", email: "spieler@example.com",
                            info: decode(##"{"id_player":1,"id_club":"1","fname":"Alex","lname":"Muster","active_clubs":[{"club_id":"1","club_name":"EHC Musterstadt"},{"club_id":"2","club_name":"Eishockey Akademie"}]}"##),

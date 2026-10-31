@@ -371,6 +371,12 @@ private struct ClubSettingsView: View {
     @Environment(AppState.self) private var state
     let club: Club
     @State private var pickerItem: PhotosPickerItem?
+    @State private var editingImage: EditableImage?
+
+    private struct EditableImage: Identifiable {
+        let id = UUID()
+        let image: UIImage
+    }
 
     var body: some View {
         Form {
@@ -380,9 +386,22 @@ private struct ClubSettingsView: View {
                     VStack(spacing: 12) {
                         logoPreview
                             .frame(width: 96, height: 96)
-                        PhotosPicker(selection: $pickerItem, matching: .images) {
-                            Label("Logo ersetzen", systemImage: "photo.badge.plus")
+                        HStack(spacing: 12) {
+                            Button {
+                                if let current = state.clubLogoPreviews[club.id] {
+                                    editingImage = EditableImage(image: current)
+                                }
+                            } label: {
+                                Label("Bearbeiten", systemImage: "slider.horizontal.3")
+                            }
+                            .disabled(state.clubLogoPreviews[club.id] == nil)
+
+                            PhotosPicker(selection: $pickerItem, matching: .images) {
+                                Label("Logo ersetzen", systemImage: "photo.badge.plus")
+                            }
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                         if state.hasCustomLogo(club.id) {
                             Button(role: .destructive) {
                                 state.setCustomLogo(nil, for: club.id)
@@ -395,7 +414,7 @@ private struct ClubSettingsView: View {
                 }
                 .padding(.vertical, 8)
             } footer: {
-                Text("Ein heller Hintergrund wird automatisch entfernt und die Größe angepasst. Klappt das bei diesem Logo nicht, hier ein eigenes Bild wählen.")
+                Text("Ein heller Hintergrund wird automatisch entfernt und die Größe angepasst. „Bearbeiten“ öffnet den Editor für Zuschnitt, Zoom, Drehung und manuelles Freistellen.")
             }
 
             Section {
@@ -417,8 +436,13 @@ private struct ClubSettingsView: View {
                 guard let item = pickerItem,
                       let data = try? await item.loadTransferable(type: Data.self),
                       let image = UIImage(data: data) else { return }
-                state.setCustomLogo(image, for: club.id)
+                editingImage = EditableImage(image: image)
                 pickerItem = nil
+            }
+        }
+        .sheet(item: $editingImage) { editable in
+            LogoEditorView(image: editable.image, clubName: club.clubName ?? club.id) { result in
+                state.setCustomLogo(result, for: club.id)
             }
         }
     }

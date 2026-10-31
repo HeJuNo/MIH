@@ -4,6 +4,19 @@ struct RootView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
+        #if DEBUG
+        if DemoData.opensLogoEditor {
+            LogoEditorView(image: DemoData.sampleLogoForEditor(), clubName: "EHC Musterstadt",
+                            initialMode: DemoData.logoEditorStartsOnRetouch ? .retouch : .transform) { _ in }
+        } else {
+            main
+        }
+        #else
+        main
+        #endif
+    }
+
+    @ViewBuilder private var main: some View {
         @Bindable var state = state
         if state.isLoggedIn {
             TabView(selection: $state.selectedTab) {
