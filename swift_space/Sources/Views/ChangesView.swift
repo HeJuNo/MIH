@@ -57,6 +57,13 @@ struct ChangesView: View {
             }
             .onAppear { state.markChangesSeen() }
             .onChange(of: state.changeLog.count) { state.markChangesSeen() }
+            #if DEBUG
+            .task {
+                if DemoData.opensChangesDetail, let first = state.changeLog.first(where: { state.entry(for: $0.eventKey) != nil }) {
+                    path = [first.eventKey]
+                }
+            }
+            #endif
         }
     }
 

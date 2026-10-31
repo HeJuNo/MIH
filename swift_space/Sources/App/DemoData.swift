@@ -21,6 +21,8 @@ enum DemoData {
     static var opensLogoEditor: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoLogoEditor") }
     static var logoEditorStartsOnRetouch: Bool { ProcessInfo.processInfo.arguments.contains("-demoLogoEditorRetouch") }
     static var opensClubSettings: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoClubSettings") }
+    /// Opens Änderungen with an entry already pushed, to screenshot that Back reads "Änderungen".
+    static var opensChangesDetail: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoChangesDetail") }
 
     /// A crest-on-a-white-card logo, deliberately shaped like what clubs actually ship, so
     /// `-demoLogoEditor` also shows the automatic background removal doing real work.
