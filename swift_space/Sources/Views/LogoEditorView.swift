@@ -102,6 +102,20 @@ struct LogoEditorView: View {
         .simultaneousGesture(dragGesture)
         .simultaneousGesture(magnificationGesture)
         .simultaneousGesture(rotationGesture)
+        // Gestures alone aren't VoiceOver-operable; expose zoom as an adjustable value here.
+        // Pan and the retouch brush have no equivalent yet — framing and background removal
+        // are still reachable via the rotate buttons and the automatic cleanup button below.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(mode == .transform ? "Logo-Vorschau" : "Logo-Vorschau, Freistellen")
+        .accessibilityValue(mode == .transform ? "\(Int(scale * 100)) Prozent Zoom" : "")
+        .accessibilityAdjustableAction { direction in
+            guard mode == .transform else { return }
+            switch direction {
+            case .increment: scale = min(scale + 0.1, 5); lastScale = scale; hasEdits = true
+            case .decrement: scale = max(scale - 0.1, 0.2); lastScale = scale; hasEdits = true
+            default: break
+            }
+        }
     }
 
     private var checkerboard: some View {
@@ -120,11 +134,12 @@ struct LogoEditorView: View {
 
     private var controls: some View {
         VStack(spacing: 16) {
-            Picker("", selection: $mode) {
+            Picker("Bearbeitungsmodus", selection: $mode) {
                 ForEach(Mode.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
+            .labelsHidden()
 
             switch mode {
             case .transform: transformControls
@@ -143,7 +158,9 @@ struct LogoEditorView: View {
         VStack(spacing: 12) {
             HStack(spacing: 28) {
                 Button { rotateBy(-90) } label: { Image(systemName: "rotate.left") }
+                    .accessibilityLabel("Um 90 Grad nach links drehen")
                 Button { rotateBy(90) } label: { Image(systemName: "rotate.right") }
+                    .accessibilityLabel("Um 90 Grad nach rechts drehen")
             }
             .buttonStyle(.bordered)
             .imageScale(.large)
@@ -168,16 +185,19 @@ struct LogoEditorView: View {
 
             LabeledContent("Empfindlichkeit") {
                 Slider(value: $tolerance, in: 4...60)
+                    .accessibilityLabel("Empfindlichkeit")
             }
 
-            Picker("", selection: $retouchTool) {
+            Picker("Werkzeug", selection: $retouchTool) {
                 Text("Radieren").tag(RetouchTool.erase)
                 Text("Wiederherstellen").tag(RetouchTool.restore)
             }
             .pickerStyle(.segmented)
+            .labelsHidden()
 
             LabeledContent("Pinselgröße") {
                 Slider(value: $brushRadius, in: 8...60)
+                    .accessibilityLabel("Pinselgröße")
             }
 
             Text("Mit dem Finger über das Bild streichen, um Hintergrundreste zu entfernen oder fälschlich entfernte Stellen wiederherzustellen.")
