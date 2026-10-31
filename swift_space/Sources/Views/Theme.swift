@@ -26,6 +26,22 @@ extension Color {
         guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
         self.init(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
     }
+
+    /// WCAG relative luminance (0...1). Used to pick a readable foreground for a club/player
+    /// color we didn't choose ourselves — a pale club hex can't be trusted to work with fixed
+    /// white text.
+    var relativeLuminance: Double {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func channel(_ c: CGFloat) -> Double {
+            let c = Double(c)
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
+
+    /// `.white` or a near-black, whichever reads reliably on this color used as a background.
+    var accessibleForeground: Color { relativeLuminance > 0.45 ? Theme.night : .white }
 }
 
 extension AppearanceMode {
@@ -75,8 +91,11 @@ struct Pill: View {
         .font(.caption.weight(.semibold))
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .foregroundStyle(filled ? .white : color)
-        .background(filled ? color : color.opacity(0.14), in: Capsule())
+        // Plain `color` text on a 14%-tint background reads under WCAG AA for several of our
+        // status colors; mixing toward the current label color keeps the hue but darkens (light
+        // mode) or lightens (dark mode) it enough to stay legible, and adapts automatically.
+        .foregroundStyle(filled ? .white : color.mix(with: .primary, by: 0.35))
+        .background(filled ? color : color.opacity(0.18), in: Capsule())
     }
 }
 
@@ -167,9 +186,13 @@ struct PressableStyle: ButtonStyle {
 
 extension View {
     /// Rounded hero surface in an event's color; flat, without drop shadow or decoration.
+    /// The hero always carries fixed white text, so a pale club hex needs a stronger mix
+    /// toward black/night than a dark one does to stay readable.
     func heroBackground(_ tint: Color) -> some View {
-        background {
-            LinearGradient(colors: [tint.mix(with: .black, by: 0.15), tint.mix(with: Theme.night, by: 0.55)],
+        let strong = tint.relativeLuminance > 0.45
+        return background {
+            LinearGradient(colors: [tint.mix(with: .black, by: strong ? 0.4 : 0.15),
+                                    tint.mix(with: Theme.night, by: strong ? 0.8 : 0.55)],
                            startPoint: .topLeading, endPoint: .bottomTrailing)
         }
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))

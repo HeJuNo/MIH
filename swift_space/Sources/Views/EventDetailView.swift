@@ -417,7 +417,7 @@ private struct Avatar: View {
             .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
             .frame(width: size, height: size)
             .background(color.opacity(0.16), in: Circle())
-            .foregroundStyle(color)
+            .foregroundStyle(color.mix(with: .primary, by: 0.35))
             .accessibilityHidden(true)
     }
 }
@@ -431,7 +431,7 @@ private struct NumberBadge: View {
             .font(.system(size: size * 0.42, weight: .bold, design: .rounded).monospacedDigit())
             .frame(width: size, height: size)
             .background(color, in: Circle())
-            .foregroundStyle(.white)
+            .foregroundStyle(color.accessibleForeground)
             .accessibilityLabel("Nummer \(number)")
     }
 }
