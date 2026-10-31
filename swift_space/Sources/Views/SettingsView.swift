@@ -392,14 +392,15 @@ struct ClubSettingsView: View {
                                 editingImage = EditableImage(image: current)
                             }
                         } label: {
+                            // minHeight 44 keeps the tap target HIG-sized even at .controlSize(.small).
                             Label("Bearbeiten", systemImage: "slider.horizontal.3")
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .disabled(state.clubLogoPreviews[club.id] == nil)
 
                         PhotosPicker(selection: $pickerItem, matching: .images) {
                             Label("Logo ersetzen", systemImage: "photo.badge.plus")
-                                .frame(maxWidth: .infinity)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
 
                         if state.hasCustomLogo(club.id) {
@@ -407,7 +408,7 @@ struct ClubSettingsView: View {
                                 state.setCustomLogo(nil, for: club.id)
                             } label: {
                                 Label("Logo zurücksetzen", systemImage: "arrow.counterclockwise")
-                                    .frame(maxWidth: .infinity)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
                             }
                         }
                     }

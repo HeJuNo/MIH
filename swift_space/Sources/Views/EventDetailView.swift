@@ -264,6 +264,8 @@ private struct AttendanceRow: View {
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
                     .accessibilityLabel("Status ändern")
+                    // Keeps the compact capsule look while meeting the 44×44pt minimum tap target.
+                    .frame(minWidth: 44, minHeight: 44)
             }
         }
         .padding(.vertical, 2)
