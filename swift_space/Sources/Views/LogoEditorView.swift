@@ -25,6 +25,11 @@ struct LogoEditorView: View {
     @State private var brushRadius: Double = 28
     @State private var tolerance: Double = 18
 
+    /// True once the user has actually changed something — distinct from `working != original`,
+    /// which is already true after the automatic cleanup in `.task` runs on open.
+    @State private var hasEdits = false
+    @State private var confirmDiscard = false
+
     private let canvasSide: CGFloat = 280
     private let outputSide: CGFloat = 1024
 
@@ -59,7 +64,7 @@ struct LogoEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Abbrechen") { dismiss() }
+                    Button("Abbrechen") { hasEdits ? (confirmDiscard = true) : dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fertig") { save() }
@@ -69,7 +74,13 @@ struct LogoEditorView: View {
                 working.removeBackground(tolerance: Int(tolerance))
                 refreshPreview()
             }
+            .confirmationDialog("Änderungen verwerfen?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+                Button("Änderungen verwerfen", role: .destructive) { dismiss() }
+            } message: {
+                Text("Deine Bearbeitung geht verloren.")
+            }
         }
+        .interactiveDismissDisabled(hasEdits)
     }
 
     private var canvas: some View {
@@ -148,6 +159,7 @@ struct LogoEditorView: View {
         VStack(spacing: 12) {
             Button {
                 working.removeBackground(tolerance: Int(tolerance))
+                hasEdits = true
                 refreshPreview()
             } label: {
                 Label("Hintergrund automatisch entfernen", systemImage: "wand.and.stars")
@@ -185,6 +197,7 @@ struct LogoEditorView: View {
                 case .transform:
                     offset = CGSize(width: lastOffset.width + value.translation.width,
                                      height: lastOffset.height + value.translation.height)
+                    hasEdits = true
                 case .retouch:
                     paint(at: value.location)
                 }
@@ -196,13 +209,13 @@ struct LogoEditorView: View {
 
     private var magnificationGesture: some Gesture {
         MagnificationGesture()
-            .onChanged { value in if mode == .transform { scale = lastScale * value } }
+            .onChanged { value in if mode == .transform { scale = lastScale * value; hasEdits = true } }
             .onEnded { _ in lastScale = scale }
     }
 
     private var rotationGesture: some Gesture {
         RotationGesture()
-            .onChanged { value in if mode == .transform { rotation = lastRotation + value } }
+            .onChanged { value in if mode == .transform { rotation = lastRotation + value; hasEdits = true } }
             .onEnded { _ in lastRotation = rotation }
     }
 
@@ -211,6 +224,7 @@ struct LogoEditorView: View {
             rotation += .degrees(degrees)
             lastRotation = rotation
         }
+        hasEdits = true
     }
 
     // MARK: - Pixel editing
@@ -237,6 +251,7 @@ struct LogoEditorView: View {
         case .erase: working.erase(at: (px, py), radius: radiusPx)
         case .restore: working.restore(at: (px, py), radius: radiusPx, from: original)
         }
+        hasEdits = true
         refreshPreview()
     }
 
@@ -249,6 +264,7 @@ struct LogoEditorView: View {
         scale = 1; lastScale = 1
         rotation = .zero; lastRotation = .zero
         offset = .zero; lastOffset = .zero
+        hasEdits = false
         refreshPreview()
     }
 

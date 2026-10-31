@@ -17,6 +17,13 @@ struct StatusSheet: View {
     @State private var error: String?
     @FocusState private var notesFocused: Bool
 
+    /// Snapshot of what `seed()` loaded, to detect edits worth confirming before a discard.
+    @State private var seededStatus: HealthStatus?
+    @State private var seededAttendance: Availability?
+    @State private var seededNotes = ""
+    @State private var confirmDiscard = false
+    private var hasEdits: Bool { status != seededStatus || attendance != seededAttendance || notes != seededNotes }
+
     private var event: Event { entry.event }
     private var currentAvailability: Availability { Availability(code: entry.detail?.available ?? event.available) }
     private var asksAttendance: Bool { event.isGame && currentAvailability != .notRequested }
@@ -81,7 +88,9 @@ struct StatusSheet: View {
             .navigationTitle("Status ändern")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Abbrechen") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Abbrechen") { hasEdits ? (confirmDiscard = true) : dismiss() }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(action: save) {
                         if saving { ProgressView() } else { Text("Speichern") }
@@ -94,7 +103,13 @@ struct StatusSheet: View {
             .sensoryFeedback(.selection, trigger: attendance)
             .sensoryFeedback(.success, trigger: saved)
             .sensoryFeedback(.error, trigger: failed)
+            .confirmationDialog("Änderungen verwerfen?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+                Button("Änderungen verwerfen", role: .destructive) { dismiss() }
+            } message: {
+                Text("Deine Eingaben gehen verloren.")
+            }
         }
+        .interactiveDismissDisabled(hasEdits)
         .presentationDetents([.large])
     }
 
@@ -159,6 +174,9 @@ struct StatusSheet: View {
         if let s = status, !StatusRules.allowedStatuses(for: [event]).contains(s) { status = nil }
         notes = entry.detail?.healthNotes ?? event.healthStatusNotes ?? ""
         attendance = [.confirmed, .declined].contains(currentAvailability) ? currentAvailability : nil
+        seededStatus = status
+        seededAttendance = attendance
+        seededNotes = notes
     }
 
     private func save() {
