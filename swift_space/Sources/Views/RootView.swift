@@ -34,10 +34,10 @@ struct RootView: View {
                     ChangesView()
                 }
                 .badge(state.unseenChanges)
-                if state.loggingEnabled {
-                    Tab("Protokoll", systemImage: "list.bullet.rectangle", value: AppState.Tab.log) {
-                        LogView()
-                    }
+                // Always present — HIG wants a stable tab set; LogView itself explains when
+                // logging is switched off instead of the tab disappearing underneath the user.
+                Tab("Protokoll", systemImage: "list.bullet.rectangle", value: AppState.Tab.log) {
+                    LogView()
                 }
                 Tab("Einstellungen", systemImage: "gearshape", value: AppState.Tab.settings) {
                     SettingsView()

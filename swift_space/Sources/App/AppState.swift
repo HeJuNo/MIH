@@ -412,7 +412,6 @@ final class AppState {
         } else {
             env.log(.info, .app, "Logging disabled")
             env.settings.loggingEnabled = false
-            if selectedTab == .log { selectedTab = .settings }
         }
         loggingEnabled = on
     }
