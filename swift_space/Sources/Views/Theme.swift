@@ -40,14 +40,27 @@ extension Color {
         return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
     }
 
-    /// Where white-on-this-color and black-on-this-color contrast are equal: solving
-    /// (1.05)/(L+0.05) = (L+0.05)/0.05 gives L ≈ 0.179 — well below the naive "halfway" guess.
-    /// A mid-luminance color like systemOrange (L≈0.43) already needs dark text, not white.
-    static let luminanceNeedingDarkText = 0.179
+    /// WCAG contrast ratio between two relative luminances.
+    private static func contrast(_ l1: Double, _ l2: Double) -> Double {
+        let hi = max(l1, l2), lo = min(l1, l2)
+        return (hi + 0.05) / (lo + 0.05)
+    }
 
-    /// `.white` or a near-black, whichever gives the higher WCAG contrast against this color
-    /// used as a background.
-    var accessibleForeground: Color { relativeLuminance > Color.luminanceNeedingDarkText ? Theme.night : .white }
+    /// `.white` or Theme.night, whichever gives the higher WCAG contrast against this color used
+    /// as a background. Computed directly against each candidate's own luminance — Theme.night
+    /// isn't pure black (L≈0.0065), so a fixed "crossover" constant assuming L=0 picks the wrong
+    /// side right where it matters most, e.g. right at Theme.alert's own luminance (L≈0.18).
+    var accessibleForeground: Color {
+        let bg = relativeLuminance
+        let white = Color.contrast(bg, 1)
+        let night = Color.contrast(bg, Theme.night.relativeLuminance)
+        return white >= night ? .white : Theme.night
+    }
+
+    /// True when plain white text on this color wouldn't clear WCAG AA (4.5:1) on its own —
+    /// used by `heroBackground`, which always carries fixed white text, to decide how hard to
+    /// darken a background tint instead of which foreground to pick.
+    var needsDarkerBackgroundForWhiteText: Bool { Color.contrast(relativeLuminance, 1) < 4.5 }
 }
 
 extension AppearanceMode {
@@ -100,7 +113,11 @@ struct Pill: View {
         // Plain `color` text on a 14%-tint background reads under WCAG AA for several of our
         // status colors; mixing toward the current label color keeps the hue but darkens (light
         // mode) or lightens (dark mode) it enough to stay legible, and adapts automatically.
-        .foregroundStyle(filled ? color.accessibleForeground : color.mix(with: .primary, by: 0.35))
+        // `filled` is only ever Theme.alert (CancelledPill) today: white, always — not
+        // accessibleForeground's computed pick, which flips to dark text in dark mode where
+        // Alert is brighter. A red "cancelled" badge reads as an alert; white-on-red is the
+        // deliberate, recognizable look for that, not a contrast-optimization target.
+        .foregroundStyle(filled ? .white : color.mix(with: .primary, by: 0.35))
         .background(filled ? color : color.opacity(0.18), in: Capsule())
     }
 }
@@ -195,7 +212,7 @@ extension View {
     /// The hero always carries fixed white text, so a pale club hex needs a stronger mix
     /// toward black/night than a dark one does to stay readable.
     func heroBackground(_ tint: Color) -> some View {
-        let strong = tint.relativeLuminance > Color.luminanceNeedingDarkText
+        let strong = tint.needsDarkerBackgroundForWhiteText
         return background {
             LinearGradient(colors: [tint.mix(with: .black, by: strong ? 0.4 : 0.15),
                                     tint.mix(with: Theme.night, by: strong ? 0.8 : 0.55)],
