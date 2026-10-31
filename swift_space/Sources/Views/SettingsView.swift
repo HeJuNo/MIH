@@ -367,7 +367,7 @@ private struct ClubSummaryRow: View {
 
 /// One team's own settings, reached from its row under "Konto": its (auto-cleaned) logo,
 /// replaceable when the automatic cleanup can't cope, and its calendar Kürzel.
-private struct ClubSettingsView: View {
+struct ClubSettingsView: View {
     @Environment(AppState.self) private var state
     let club: Club
     @State private var pickerItem: PhotosPickerItem?
@@ -383,33 +383,37 @@ private struct ClubSettingsView: View {
             Section {
                 HStack {
                     Spacer()
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         logoPreview
                             .frame(width: 96, height: 96)
-                        HStack(spacing: 12) {
-                            Button {
-                                if let current = state.clubLogoPreviews[club.id] {
-                                    editingImage = EditableImage(image: current)
-                                }
-                            } label: {
-                                Label("Bearbeiten", systemImage: "slider.horizontal.3")
+                            .padding(.bottom, 2)
+                        Button {
+                            if let current = state.clubLogoPreviews[club.id] {
+                                editingImage = EditableImage(image: current)
                             }
-                            .disabled(state.clubLogoPreviews[club.id] == nil)
-
-                            PhotosPicker(selection: $pickerItem, matching: .images) {
-                                Label("Logo ersetzen", systemImage: "photo.badge.plus")
-                            }
+                        } label: {
+                            Label("Bearbeiten", systemImage: "slider.horizontal.3")
+                                .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .disabled(state.clubLogoPreviews[club.id] == nil)
+
+                        PhotosPicker(selection: $pickerItem, matching: .images) {
+                            Label("Logo ersetzen", systemImage: "photo.badge.plus")
+                                .frame(maxWidth: .infinity)
+                        }
+
                         if state.hasCustomLogo(club.id) {
                             Button(role: .destructive) {
                                 state.setCustomLogo(nil, for: club.id)
                             } label: {
                                 Label("Logo zurücksetzen", systemImage: "arrow.counterclockwise")
+                                    .frame(maxWidth: .infinity)
                             }
                         }
                     }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .frame(width: 220)
                     Spacer()
                 }
                 .padding(.vertical, 8)

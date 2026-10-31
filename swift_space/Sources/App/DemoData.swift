@@ -20,6 +20,7 @@ enum DemoData {
     static var opensPast: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoPast") }
     static var opensLogoEditor: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoLogoEditor") }
     static var logoEditorStartsOnRetouch: Bool { ProcessInfo.processInfo.arguments.contains("-demoLogoEditorRetouch") }
+    static var opensClubSettings: Bool { isEnabled && ProcessInfo.processInfo.arguments.contains("-demoClubSettings") }
 
     /// A crest-on-a-white-card logo, deliberately shaped like what clubs actually ship, so
     /// `-demoLogoEditor` also shows the automatic background removal doing real work.

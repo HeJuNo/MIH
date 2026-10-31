@@ -79,6 +79,7 @@ final class AppState {
             lastSync = .now.addingTimeInterval(-420)
             preferences.set(false, for: entries[3].id)
             clubLogos = DemoData.clubLogos()
+            clubLogoPreviews = clubLogos
             // Not persisted, so screenshots never depend on an earlier run.
             storedScheduleFilter = ScheduleFilter(kind: DemoData.value(after: "-demoFilter").flatMap(KindFilter.init(rawValue:)) ?? .all,
                                                   clubID: DemoData.value(after: "-demoClub"))

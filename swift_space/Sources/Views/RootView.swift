@@ -8,6 +8,13 @@ struct RootView: View {
         if DemoData.opensLogoEditor {
             LogoEditorView(image: DemoData.sampleLogoForEditor(), clubName: "EHC Musterstadt",
                             initialMode: DemoData.logoEditorStartsOnRetouch ? .retouch : .transform) { _ in }
+        } else if DemoData.opensClubSettings {
+            NavigationStack {
+                if let club = state.clubs.first {
+                    ClubSettingsView(club: club)
+                }
+            }
+            .task { await state.loadClubLogos() }
         } else {
             main
         }
