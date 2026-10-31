@@ -1,3 +1,4 @@
+import EventKit
 import Foundation
 import MyIceKit
 import Observation
@@ -41,6 +42,13 @@ final class AppState {
     private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     private(set) var backgroundRefreshStatus: UIBackgroundRefreshStatus = .available
     private(set) var lastBackgroundRun: Date?
+    private(set) var calendarSyncEnabled = false
+    private(set) var calendarTitlePrefixEnabled = false
+    private(set) var calendarTitlePrefix = ""
+    private(set) var clubAbbreviations: [String: String] = [:]
+    private(set) var calendarIdentifier: String?
+    private(set) var calendarAuthStatus: EKAuthorizationStatus = .notDetermined
+    private(set) var calendarOptions: [(id: String, title: String)] = []
 
     // Protocol
     private(set) var loggingEnabled = false
@@ -71,6 +79,7 @@ final class AppState {
             lastSync = .now.addingTimeInterval(-420)
             preferences.set(false, for: entries[3].id)
             clubLogos = DemoData.clubLogos()
+            clubLogoPreviews = clubLogos
             // Not persisted, so screenshots never depend on an earlier run.
             storedScheduleFilter = ScheduleFilter(kind: DemoData.value(after: "-demoFilter").flatMap(KindFilter.init(rawValue:)) ?? .all,
                                                   clubID: DemoData.value(after: "-demoClub"))
@@ -231,16 +240,47 @@ final class AppState {
 
     /// Club logos sized for menu rows, where `AsyncImage` can't be used. Keyed by club ID.
     private(set) var clubLogos: [String: UIImage] = [:]
+    /// The same (cleaned, cropped) logos at their processed resolution, for the bigger
+    /// preview in the per-team settings screen — `clubLogos` is baked down to 26pt and
+    /// would look blurry scaled back up.
+    private(set) var clubLogoPreviews: [String: UIImage] = [:]
 
-    /// Loads missing logos once; `URLSession`'s shared cache keeps them on disk.
+    /// Loads missing logos once; `URLSession`'s shared cache keeps the remote ones on
+    /// disk. A user-supplied replacement (`setCustomLogo`) always wins over the remote one.
     func loadClubLogos() async {
         for club in clubs where clubLogos[club.id] == nil {
-            guard let url = club.clubLogo,
-                  let (data, _) = try? await URLSession.shared.data(from: url),
-                  let image = UIImage(data: data) else { continue }
-            clubLogos[club.id] = image.menuIcon()
+            let resolved: UIImage?
+            if let custom = env.clubLogoStore.load(club.id) {
+                resolved = custom   // already finalized by LogoEditorView — don't reprocess
+            } else if let url = club.clubLogo, let (data, _) = try? await URLSession.shared.data(from: url) {
+                resolved = UIImage(data: data).map(LogoProcessing.cleaned)
+            } else {
+                resolved = nil
+            }
+            guard let resolved else { continue }
+            clubLogoPreviews[club.id] = resolved
+            clubLogos[club.id] = resolved.menuIcon()
         }
     }
+
+    /// Replaces (or, with `nil`, clears back to) the club's logo with the result of
+    /// `LogoEditorView` — already cropped, rotated and background-cleaned as the user chose,
+    /// so it's stored and shown as-is rather than run through automatic cleanup again.
+    func setCustomLogo(_ image: UIImage?, for clubID: String) {
+        if let image {
+            env.clubLogoStore.save(image, for: clubID)
+            clubLogoPreviews[clubID] = image
+            clubLogos[clubID] = image.menuIcon()
+        } else {
+            env.clubLogoStore.remove(clubID)
+            clubLogos[clubID] = nil
+            clubLogoPreviews[clubID] = nil
+            Task { await loadClubLogos() }
+        }
+    }
+
+    func hasCustomLogo(_ clubID: String) -> Bool { env.clubLogoStore.load(clubID) != nil }
+
     var hasMultipleClubs: Bool { clubs.count > 1 }
 
     func clubName(_ id: String?) -> String? {
@@ -356,6 +396,11 @@ final class AppState {
         loggingEnabled = env.settings.loggingEnabled
         logLevel = env.settings.logLevel
         logAreas = env.settings.logAreas
+        calendarSyncEnabled = env.settings.calendarSyncEnabled
+        calendarTitlePrefixEnabled = env.settings.calendarTitlePrefixEnabled
+        calendarTitlePrefix = env.settings.calendarTitlePrefix
+        clubAbbreviations = env.settings.clubAbbreviations
+        calendarIdentifier = env.settings.calendarIdentifier
     }
 
     // MARK: Protocol
@@ -367,7 +412,6 @@ final class AppState {
         } else {
             env.log(.info, .app, "Logging disabled")
             env.settings.loggingEnabled = false
-            if selectedTab == .log { selectedTab = .settings }
         }
         loggingEnabled = on
     }
@@ -412,6 +456,65 @@ final class AppState {
         env.settings.appearance = a
     }
 
+    // MARK: Calendar sync
+
+    func requestCalendarAccess() async {
+        if calendarAuthStatus == .denied || calendarAuthStatus == .restricted {
+            if let url = URL(string: UIApplication.openSettingsURLString) { await UIApplication.shared.open(url) }
+            return
+        }
+        _ = await env.calendarSync.requestAccess()
+        await refreshSystemStatus()
+    }
+
+    func setCalendarSyncEnabled(_ on: Bool) {
+        calendarSyncEnabled = on
+        env.settings.calendarSyncEnabled = on
+        Task {
+            if on {
+                if calendarAuthStatus != .fullAccess { await requestCalendarAccess() }
+                await syncCalendarNow()
+            } else {
+                await env.calendarSync.removeAll()
+            }
+        }
+    }
+
+    func setCalendarTitlePrefixEnabled(_ on: Bool) {
+        calendarTitlePrefixEnabled = on
+        env.settings.calendarTitlePrefixEnabled = on
+        Task { await syncCalendarNow() }
+    }
+
+    func setCalendarTitlePrefix(_ prefix: String) {
+        calendarTitlePrefix = prefix
+        env.settings.calendarTitlePrefix = prefix
+        Task { await syncCalendarNow() }
+    }
+
+    func setClubAbbreviation(_ abbreviation: String, for clubID: String) {
+        clubAbbreviations[clubID] = abbreviation
+        env.settings.clubAbbreviations = clubAbbreviations
+        Task { await syncCalendarNow() }
+    }
+
+    func setCalendarIdentifier(_ id: String?) {
+        calendarIdentifier = id
+        env.settings.calendarIdentifier = id
+        Task { await syncCalendarNow() }
+    }
+
+    func loadCalendarOptions() async {
+        calendarOptions = await env.calendarSync.availableCalendars()
+        calendarIdentifier = env.settings.calendarIdentifier   // CalendarSync may have auto-created the dedicated one
+    }
+
+    private func syncCalendarNow() async {
+        guard calendarSyncEnabled else { return }
+        await env.calendarSync.run(reason: "settings")
+        await loadCalendarOptions()
+    }
+
     private func refreshSystemStatus() async {
         let refresh = UIApplication.shared.backgroundRefreshStatus
         let notifications = await env.notifier.authorizationStatus()
@@ -424,6 +527,7 @@ final class AppState {
         }
         backgroundRefreshStatus = refresh
         notificationStatus = notifications
+        calendarAuthStatus = EKEventStore.authorizationStatus(for: .event)
     }
 
     private var statusLogged = false

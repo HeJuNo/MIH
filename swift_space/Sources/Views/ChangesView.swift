@@ -5,9 +5,12 @@ import SwiftUI
 struct ChangesView: View {
     @Environment(AppState.self) private var state
     @State private var confirmClear = false
+    /// Its own path, so opening an entry here and tapping Back returns to this list — not to
+    /// Schedule, which is what `state.open(eventKey:)` would do (that's for notification taps).
+    @State private var path: [String] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if state.changeLog.isEmpty {
                     EmptyStateView(symbol: "bell.and.waves.left.and.right", title: "Noch keine Änderungen",
@@ -20,10 +23,9 @@ struct ChangesView: View {
                             // Removed events stay openable (read-only); only entries lost before
                             // they were kept, or trimmed from the archive, have nothing to open.
                             if state.entry(for: change.eventKey) != nil {
-                                Button { state.open(eventKey: change.eventKey) } label: {
+                                NavigationLink(value: change.eventKey) {
                                     ChangeLine(change: change, showEvent: true)
                                 }
-                                .foregroundStyle(.primary)
                                 .accessibilityHint("Öffnet den Termin")
                             } else {
                                 ChangeLine(change: change, showEvent: true)
@@ -36,6 +38,7 @@ struct ChangesView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Änderungen")
+            .navigationDestination(for: String.self) { key in EventDetailView(eventKey: key) }
             .refreshable { await state.refresh() }
             .toolbar {
                 if !state.changeLog.isEmpty {
@@ -54,6 +57,13 @@ struct ChangesView: View {
             }
             .onAppear { state.markChangesSeen() }
             .onChange(of: state.changeLog.count) { state.markChangesSeen() }
+            #if DEBUG
+            .onChange(of: state.changeLog.count, initial: true) {
+                guard path.isEmpty, DemoData.opensChangesDetail,
+                      let first = state.changeLog.first(where: { state.entry(for: $0.eventKey) != nil }) else { return }
+                path = [first.eventKey]
+            }
+            #endif
         }
     }
 
@@ -93,7 +103,8 @@ struct ChangeLine: View {
                         .font(.subheadline).foregroundStyle(.tint).lineLimit(2)
                 }
                 if !text.detail.isEmpty {
-                    Text(text.detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(4)
+                    Text(text.detail).font(.subheadline).foregroundStyle(.secondary)
+                        .lineLimit(change.kind.category == .people ? nil : 4)
                 }
             }
         }

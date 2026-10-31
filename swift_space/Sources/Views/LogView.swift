@@ -1,8 +1,8 @@
 import MyIceKit
 import SwiftUI
 
-/// "Protokoll" tab: everything the app recorded, newest first. Only visible while
-/// logging is switched on in the settings.
+/// "Protokoll" tab: everything the app recorded, newest first. The tab itself always stays in
+/// place (HIG wants a stable tab set); when logging is off, this explains that instead.
 struct LogView: View {
     @Environment(AppState.self) private var state
     @State private var entries: [LogEntry] = []
@@ -12,6 +12,23 @@ struct LogView: View {
     @State private var confirmClear = false
 
     var body: some View {
+        if !state.loggingEnabled {
+            NavigationStack {
+                EmptyStateView(symbol: "list.bullet.rectangle", title: "Protokoll ist aus",
+                               message: "Schalte die Protokollierung in den Einstellungen ein, um Einträge zu sammeln.")
+                    .overlay(alignment: .bottom) {
+                        Button("Protokollierung einschalten") { state.setLoggingEnabled(true) }
+                            .buttonStyle(.bordered)
+                            .padding(.bottom, 24)
+                    }
+                    .navigationTitle("Protokoll")
+            }
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         NavigationStack {
             List {
                 if visible.isEmpty {

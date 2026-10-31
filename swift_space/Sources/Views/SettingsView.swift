@@ -1,4 +1,6 @@
+import EventKit
 import MyIceKit
+import PhotosUI
 import SwiftUI
 import UserNotifications
 
@@ -15,6 +17,7 @@ struct SettingsView: View {
                 accountSection
                 appearanceSection
                 notificationSection
+                calendarSection
                 mapsSection
                 backgroundSection
                 logSection
@@ -43,17 +46,11 @@ struct SettingsView: View {
                 .padding(.vertical, 4)
 
                 ForEach(state.clubs) { club in
-                    HStack(spacing: 12) {
-                        AsyncImage(url: club.clubLogo) { $0.resizable().scaledToFit() } placeholder: {
-                            Image(systemName: "shield.fill").foregroundStyle(.tint)
-                        }
-                        .frame(width: 26, height: 26)
-                        Text(club.clubName ?? club.id).font(.subheadline)
-                        Spacer()
-                        let count = state.entries.filter { $0.clubID == club.id }.count
-                        Text(count == 1 ? "1 Termin" : "\(count) Termine").font(.caption).foregroundStyle(.secondary)
+                    NavigationLink(destination: ClubSettingsView(club: club)) {
+                        ClubSummaryRow(club: club)
                     }
                 }
+                .task { await state.loadClubLogos() }
 
                 Button {
                     askPassword = true
@@ -70,6 +67,7 @@ struct SettingsView: View {
                 .disabled(state.isImportingHistory)
                 .alert("Vergangene Termine laden", isPresented: $askPassword) {
                     SecureField("Passwort", text: $password)
+                        .textContentType(.password)
                     Button("Laden") {
                         let pw = password
                         password = ""
@@ -172,6 +170,62 @@ struct SettingsView: View {
                 ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
             } label: {
                 Label { Text("Darstellung") } icon: { SettingsIcon(symbol: "circle.lefthalf.filled", color: .gray) }
+            }
+        }
+    }
+
+    // MARK: Calendar sync
+
+    private var calendarSection: some View {
+        Section {
+            calendarPermissionRow
+
+            Toggle(isOn: Binding(get: { state.calendarSyncEnabled }, set: { state.setCalendarSyncEnabled($0) })) {
+                Label { Text("Kalendersynchronisation") } icon: { SettingsIcon(symbol: "calendar.badge.clock", color: Theme.accent) }
+            }
+
+            if state.calendarSyncEnabled {
+                Picker(selection: Binding(get: { state.calendarIdentifier }, set: { state.setCalendarIdentifier($0) })) {
+                    Text("Automatisch (\(CalendarSync.defaultCalendarTitle))").tag(nil as String?)
+                    ForEach(state.calendarOptions, id: \.id) { option in
+                        Text(option.title).tag(option.id as String?)
+                    }
+                } label: {
+                    Label { Text("Kalender") } icon: { SettingsIcon(symbol: "calendar", color: .gray) }
+                }
+
+                Toggle(isOn: Binding(get: { state.calendarTitlePrefixEnabled }, set: { state.setCalendarTitlePrefixEnabled($0) })) {
+                    Label { Text("Eigenes Präfix") } icon: { SettingsIcon(symbol: "textformat", color: .gray) }
+                }
+                if state.calendarTitlePrefixEnabled {
+                    TextField("z. B. 🏒", text: Binding(get: { state.calendarTitlePrefix },
+                                                         set: { state.setCalendarTitlePrefix($0) }))
+                }
+            }
+        } header: {
+            Text("Kalender")
+        } footer: {
+            Text("Spiegelt Spiele und Trainings der laufenden Saison inklusive Treffpunkt, Abfahrt und Aufgebot in einen iOS-Kalender. Das Kürzel je Team (unter „Konto“) ersetzt den Vereinsnamen in den Kalendertiteln.")
+        }
+        .task { await state.loadCalendarOptions() }
+    }
+
+    @ViewBuilder private var calendarPermissionRow: some View {
+        switch state.calendarAuthStatus {
+        case .fullAccess:
+            Label { Text("Kalenderzugriff erlaubt") } icon: { SettingsIcon(symbol: "checkmark", color: Theme.positive) }
+        case .denied, .restricted:
+            Button { Task { await state.requestCalendarAccess() } } label: {
+                Label {
+                    VStack(alignment: .leading) {
+                        Text("Kalenderzugriff deaktiviert")
+                        Text("In den iOS-Einstellungen erlauben").font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: { SettingsIcon(symbol: "exclamationmark", color: Theme.alert) }
+            }
+        default:
+            Button { Task { await state.requestCalendarAccess() } } label: {
+                Label { Text("Kalenderzugriff erlauben") } icon: { SettingsIcon(symbol: "calendar.badge.plus", color: Theme.warning) }
             }
         }
     }
@@ -283,6 +337,127 @@ struct SettingsView: View {
             LabeledContent("Version", value: Bundle.main.versionString)
         } footer: {
             Text("MyHockey Data ist eine inoffizielle App und steht in keiner Verbindung zu den Betreibern von myice.hockey.")
+        }
+    }
+}
+
+/// The club row in "Konto": logo + name + term count, navigating to `ClubSettingsView`
+/// for the logo and Kürzel editors.
+private struct ClubSummaryRow: View {
+    @Environment(AppState.self) private var state
+    let club: Club
+
+    var body: some View {
+        HStack(spacing: 12) {
+            logoImage.frame(width: 26, height: 26)
+            Text(club.clubName ?? club.id).font(.subheadline)
+            Spacer()
+            let count = state.entries.filter { $0.clubID == club.id }.count
+            Text(count == 1 ? "1 Termin" : "\(count) Termine").font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var logoImage: some View {
+        if let logo = state.clubLogos[club.id] {
+            Image(uiImage: logo).resizable().scaledToFit()
+        } else {
+            Image(systemName: "shield.fill").foregroundStyle(.tint)
+        }
+    }
+}
+
+/// One team's own settings, reached from its row under "Konto": its (auto-cleaned) logo,
+/// replaceable when the automatic cleanup can't cope, and its calendar Kürzel.
+struct ClubSettingsView: View {
+    @Environment(AppState.self) private var state
+    let club: Club
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var editingImage: EditableImage?
+
+    private struct EditableImage: Identifiable {
+        let id = UUID()
+        let image: UIImage
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 10) {
+                        logoPreview
+                            .frame(width: 96, height: 96)
+                            .padding(.bottom, 2)
+                        Button {
+                            if let current = state.clubLogoPreviews[club.id] {
+                                editingImage = EditableImage(image: current)
+                            }
+                        } label: {
+                            // minHeight 44 keeps the tap target HIG-sized even at .controlSize(.small).
+                            Label("Bearbeiten", systemImage: "slider.horizontal.3")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .disabled(state.clubLogoPreviews[club.id] == nil)
+
+                        PhotosPicker(selection: $pickerItem, matching: .images) {
+                            Label("Logo ersetzen", systemImage: "photo.badge.plus")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+
+                        if state.hasCustomLogo(club.id) {
+                            Button(role: .destructive) {
+                                state.setCustomLogo(nil, for: club.id)
+                            } label: {
+                                Label("Logo zurücksetzen", systemImage: "arrow.counterclockwise")
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .frame(width: 220)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            } footer: {
+                Text("Ein heller Hintergrund wird automatisch entfernt und die Größe angepasst. „Bearbeiten“ öffnet den Editor für Zuschnitt, Zoom, Drehung und manuelles Freistellen.")
+            }
+
+            Section {
+                TextField("Kürzel", text: Binding(
+                    get: { state.clubAbbreviations[club.id] ?? "" },
+                    set: { state.setClubAbbreviation($0, for: club.id) }
+                ))
+            } header: {
+                Text("Kürzel")
+            } footer: {
+                Text("Ersetzt den Vereinsnamen in Kalendertiteln, z. B. „Kürzel Eistraining“ statt „\(club.clubName ?? "Verein") Eistraining“.")
+            }
+        }
+        .navigationTitle(club.clubName ?? club.id)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await state.loadClubLogos() }
+        .onChange(of: pickerItem) {
+            Task {
+                guard let item = pickerItem,
+                      let data = try? await item.loadTransferable(type: Data.self),
+                      let image = UIImage(data: data) else { return }
+                editingImage = EditableImage(image: image)
+                pickerItem = nil
+            }
+        }
+        .sheet(item: $editingImage) { editable in
+            LogoEditorView(image: editable.image, clubName: club.clubName ?? club.id) { result in
+                state.setCustomLogo(result, for: club.id)
+            }
+        }
+    }
+
+    @ViewBuilder private var logoPreview: some View {
+        if let logo = state.clubLogoPreviews[club.id] {
+            Image(uiImage: logo).resizable().scaledToFit()
+        } else {
+            Image(systemName: "shield.fill").resizable().scaledToFit().foregroundStyle(.tint).padding(24)
         }
     }
 }

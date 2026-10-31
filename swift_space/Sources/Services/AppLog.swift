@@ -152,6 +152,7 @@ extension LogArea {
         case .notifications: "Notifications"
         case .history: "History"
         case .status: "Status"
+        case .calendar: "Calendar"
         }
     }
 
@@ -165,6 +166,7 @@ extension LogArea {
         case .notifications: "app.badge"
         case .history: "clock.arrow.circlepath"
         case .status: "heart.text.square"
+        case .calendar: "calendar.badge.clock"
         }
     }
 }

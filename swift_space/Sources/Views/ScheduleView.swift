@@ -361,7 +361,9 @@ struct EventRow: View {
             }
         }
         .padding(.vertical, 4)
-        .opacity(isPast && entry.archivedAt == nil ? 0.55 : 1)
+        // 0.55 compounded with the row's own .secondary subtext fell well under WCAG AA;
+        // 0.8 still reads as "stale, not yet archived" without doing that.
+        .opacity(isPast && entry.archivedAt == nil ? 0.8 : 1)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
     }

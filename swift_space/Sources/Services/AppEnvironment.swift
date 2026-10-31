@@ -12,6 +12,8 @@ final class AppEnvironment: Sendable {
     let syncStore: SyncStore
     let engine: SyncEngine
     let notifier: ChangeNotifier
+    let calendarSync: CalendarSync
+    let clubLogoStore: ClubLogoStore
     let log: AppLog
 
     private init() {
@@ -32,6 +34,8 @@ final class AppEnvironment: Sendable {
         self.syncStore = syncStore
         self.engine = SyncEngine(api: api, store: syncStore, log: log.sink)
         self.notifier = ChangeNotifier(log: log)
+        self.calendarSync = CalendarSync(settings: settings, syncStore: syncStore, engine: engine, session: session, log: log)
+        self.clubLogoStore = ClubLogoStore()
         self.log = log
     }
 }

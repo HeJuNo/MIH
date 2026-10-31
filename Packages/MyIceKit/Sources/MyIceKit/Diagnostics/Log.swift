@@ -10,7 +10,7 @@ public enum LogLevel: Int, Codable, Sendable, CaseIterable, Comparable, Identifi
 
 /// Functional area a message belongs to; each can be switched on/off separately.
 public enum LogArea: String, Codable, Sendable, CaseIterable, Identifiable {
-    case app, sync, background, network, changes, notifications, history, status
+    case app, sync, background, network, changes, notifications, history, status, calendar
 
     public var id: Self { self }
 }

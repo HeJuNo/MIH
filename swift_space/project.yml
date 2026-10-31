@@ -43,6 +43,7 @@ targets:
           UIColorName: LaunchBackground
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         ITSAppUsesNonExemptEncryption: false
+        NSCalendarsFullAccessUsageDescription: Damit Spiele und Trainings in deinem iOS-Kalender erscheinen können.
         APIBaseURL: $(API_BASE_URL)
         UIBackgroundModes: [fetch, processing]
         BGTaskSchedulerPermittedIdentifiers:

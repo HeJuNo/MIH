@@ -264,6 +264,8 @@ private struct AttendanceRow: View {
                     .buttonBorderShape(.capsule)
                     .controlSize(.small)
                     .accessibilityLabel("Status ändern")
+                    // Keeps the compact capsule look while meeting the 44×44pt minimum tap target.
+                    .frame(minWidth: 44, minHeight: 44)
             }
         }
         .padding(.vertical, 2)
@@ -294,6 +296,7 @@ private struct AttendanceRow: View {
 private struct PeopleSection: View {
     let entry: TrackedEntry
     let loading: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let c = entry.detail?.convocation
@@ -318,16 +321,35 @@ private struct PeopleSection: View {
         } else {
             if !players.isEmpty, let c {
                 SwiftUI.Section {
-                    HStack(spacing: 0) {
-                        Stat(label: "Tor", value: c.availableTotalG ?? count(players, "G"))
-                        Divider()
-                        Stat(label: "Verteidigung", value: c.availableTotalD ?? count(players, "D"))
-                        Divider()
-                        Stat(label: "Sturm", value: c.availableTotalF ?? count(players, "F"))
-                        Divider()
-                        Stat(label: "Gesamt", value: c.availableTotal ?? players.count, emphasized: true)
+                    // 4 columns of text get cramped and clipped at larger Dynamic Type sizes,
+                    // same reasoning as EventRow's layout switch below Content Size.
+                    if typeSize.isAccessibilitySize {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 0) {
+                                Stat(label: "Tor", value: c.availableTotalG ?? count(players, "G"))
+                                Divider()
+                                Stat(label: "Verteidigung", value: c.availableTotalD ?? count(players, "D"))
+                            }
+                            Divider()
+                            HStack(spacing: 0) {
+                                Stat(label: "Sturm", value: c.availableTotalF ?? count(players, "F"))
+                                Divider()
+                                Stat(label: "Gesamt", value: c.availableTotal ?? players.count, emphasized: true)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        HStack(spacing: 0) {
+                            Stat(label: "Tor", value: c.availableTotalG ?? count(players, "G"))
+                            Divider()
+                            Stat(label: "Verteidigung", value: c.availableTotalD ?? count(players, "D"))
+                            Divider()
+                            Stat(label: "Sturm", value: c.availableTotalF ?? count(players, "F"))
+                            Divider()
+                            Stat(label: "Gesamt", value: c.availableTotal ?? players.count, emphasized: true)
+                        }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                 }
             }
 
@@ -384,7 +406,7 @@ private struct Stat: View {
             Text("\(value)")
                 .font(.title3.weight(.semibold).monospacedDigit())
                 .foregroundStyle(emphasized ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-            Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -415,7 +437,7 @@ private struct Avatar: View {
             .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
             .frame(width: size, height: size)
             .background(color.opacity(0.16), in: Circle())
-            .foregroundStyle(color)
+            .foregroundStyle(color.mix(with: .primary, by: 0.35))
             .accessibilityHidden(true)
     }
 }
@@ -429,7 +451,7 @@ private struct NumberBadge: View {
             .font(.system(size: size * 0.42, weight: .bold, design: .rounded).monospacedDigit())
             .frame(width: size, height: size)
             .background(color, in: Circle())
-            .foregroundStyle(.white)
+            .foregroundStyle(color.accessibleForeground)
             .accessibilityLabel("Nummer \(number)")
     }
 }
@@ -457,7 +479,12 @@ private struct MessagesSection: View {
                             }
                             Text(m.subject ?? "Mitteilung").font(.body.weight(.semibold))
                             Spacer()
-                            if let d = m.date { Text(d).font(.footnote).foregroundStyle(.secondary) }
+                            if let d = m.date {
+                                // Backend sends "yyyy-MM-dd HH:mm:ss" like everything else EventDates
+                                // parses; falls back to the raw string if that ever doesn't hold.
+                                Text(EventDates.parseDateTime(d).map { $0.formatted(.dateTime.day().month().hour().minute().locale(.de)) } ?? d)
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
                         }
                         if let body = m.message, !body.isEmpty {
                             Text(body).font(.subheadline).foregroundStyle(.secondary)
