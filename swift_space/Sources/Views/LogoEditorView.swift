@@ -52,13 +52,17 @@ struct LogoEditorView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                canvas
-                    .frame(width: canvasSide, height: canvasSide)
-                    .padding(.top, 20)
-                Text(clubName).font(.caption).foregroundStyle(.secondary).padding(.top, 8)
-                Spacer(minLength: 0)
-                controls
+            // A ScrollView, not a fixed VStack + Spacer: on a small device or with Dynamic Type
+            // pushing `controls` taller, the fixed layout could clip the sliders/buttons off
+            // the bottom of the screen instead of letting the user scroll to them.
+            ScrollView {
+                VStack(spacing: 0) {
+                    canvas
+                        .frame(width: canvasSide, height: canvasSide)
+                        .padding(.top, 20)
+                    Text(clubName).font(.caption).foregroundStyle(.secondary).padding(.top, 8)
+                    controls
+                }
             }
             .navigationTitle("Logo bearbeiten")
             .navigationBarTitleDisplayMode(.inline)

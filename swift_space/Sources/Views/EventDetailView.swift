@@ -296,6 +296,7 @@ private struct AttendanceRow: View {
 private struct PeopleSection: View {
     let entry: TrackedEntry
     let loading: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let c = entry.detail?.convocation
@@ -320,16 +321,35 @@ private struct PeopleSection: View {
         } else {
             if !players.isEmpty, let c {
                 SwiftUI.Section {
-                    HStack(spacing: 0) {
-                        Stat(label: "Tor", value: c.availableTotalG ?? count(players, "G"))
-                        Divider()
-                        Stat(label: "Verteidigung", value: c.availableTotalD ?? count(players, "D"))
-                        Divider()
-                        Stat(label: "Sturm", value: c.availableTotalF ?? count(players, "F"))
-                        Divider()
-                        Stat(label: "Gesamt", value: c.availableTotal ?? players.count, emphasized: true)
+                    // 4 columns of text get cramped and clipped at larger Dynamic Type sizes,
+                    // same reasoning as EventRow's layout switch below Content Size.
+                    if typeSize.isAccessibilitySize {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 0) {
+                                Stat(label: "Tor", value: c.availableTotalG ?? count(players, "G"))
+                                Divider()
+                                Stat(label: "Verteidigung", value: c.availableTotalD ?? count(players, "D"))
+                            }
+                            Divider()
+                            HStack(spacing: 0) {
+                                Stat(label: "Sturm", value: c.availableTotalF ?? count(players, "F"))
+                                Divider()
+                                Stat(label: "Gesamt", value: c.availableTotal ?? players.count, emphasized: true)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        HStack(spacing: 0) {
+                            Stat(label: "Tor", value: c.availableTotalG ?? count(players, "G"))
+                            Divider()
+                            Stat(label: "Verteidigung", value: c.availableTotalD ?? count(players, "D"))
+                            Divider()
+                            Stat(label: "Sturm", value: c.availableTotalF ?? count(players, "F"))
+                            Divider()
+                            Stat(label: "Gesamt", value: c.availableTotal ?? players.count, emphasized: true)
+                        }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                 }
             }
 
@@ -386,7 +406,7 @@ private struct Stat: View {
             Text("\(value)")
                 .font(.title3.weight(.semibold).monospacedDigit())
                 .foregroundStyle(emphasized ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-            Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(label).font(.caption).foregroundStyle(.secondary).lineLimit(2).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
