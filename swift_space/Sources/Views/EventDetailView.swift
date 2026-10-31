@@ -479,7 +479,12 @@ private struct MessagesSection: View {
                             }
                             Text(m.subject ?? "Mitteilung").font(.body.weight(.semibold))
                             Spacer()
-                            if let d = m.date { Text(d).font(.footnote).foregroundStyle(.secondary) }
+                            if let d = m.date {
+                                // Backend sends "yyyy-MM-dd HH:mm:ss" like everything else EventDates
+                                // parses; falls back to the raw string if that ever doesn't hold.
+                                Text(EventDates.parseDateTime(d).map { $0.formatted(.dateTime.day().month().hour().minute().locale(.de)) } ?? d)
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
                         }
                         if let body = m.message, !body.isEmpty {
                             Text(body).font(.subheadline).foregroundStyle(.secondary)

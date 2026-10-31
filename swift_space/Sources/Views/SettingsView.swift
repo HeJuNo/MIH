@@ -67,6 +67,7 @@ struct SettingsView: View {
                 .disabled(state.isImportingHistory)
                 .alert("Vergangene Termine laden", isPresented: $askPassword) {
                     SecureField("Passwort", text: $password)
+                        .textContentType(.password)
                     Button("Laden") {
                         let pw = password
                         password = ""
