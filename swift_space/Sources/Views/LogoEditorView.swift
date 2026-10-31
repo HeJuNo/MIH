@@ -52,17 +52,16 @@ struct LogoEditorView: View {
 
     var body: some View {
         NavigationStack {
-            // A ScrollView, not a fixed VStack + Spacer: on a small device or with Dynamic Type
-            // pushing `controls` taller, the fixed layout could clip the sliders/buttons off
-            // the bottom of the screen instead of letting the user scroll to them.
-            ScrollView {
-                VStack(spacing: 0) {
-                    canvas
-                        .frame(width: canvasSide, height: canvasSide)
-                        .padding(.top, 20)
-                    Text(clubName).font(.caption).foregroundStyle(.secondary).padding(.top, 8)
-                    controls
-                }
+            // Only `controls` scrolls — on a small device or with Dynamic Type it's the part
+            // that can grow past the screen. The canvas stays outside the ScrollView: its own
+            // pan/retouch drag gesture has minimumDistance 0, and sharing a scroll container
+            // with that let the ScrollView's own vertical pan compete with it mid-stroke.
+            VStack(spacing: 0) {
+                canvas
+                    .frame(width: canvasSide, height: canvasSide)
+                    .padding(.top, 20)
+                Text(clubName).font(.caption).foregroundStyle(.secondary).padding(.top, 8)
+                ScrollView { controls }
             }
             .navigationTitle("Logo bearbeiten")
             .navigationBarTitleDisplayMode(.inline)

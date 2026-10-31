@@ -40,8 +40,14 @@ extension Color {
         return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
     }
 
-    /// `.white` or a near-black, whichever reads reliably on this color used as a background.
-    var accessibleForeground: Color { relativeLuminance > 0.45 ? Theme.night : .white }
+    /// Where white-on-this-color and black-on-this-color contrast are equal: solving
+    /// (1.05)/(L+0.05) = (L+0.05)/0.05 gives L ≈ 0.179 — well below the naive "halfway" guess.
+    /// A mid-luminance color like systemOrange (L≈0.43) already needs dark text, not white.
+    static let luminanceNeedingDarkText = 0.179
+
+    /// `.white` or a near-black, whichever gives the higher WCAG contrast against this color
+    /// used as a background.
+    var accessibleForeground: Color { relativeLuminance > Color.luminanceNeedingDarkText ? Theme.night : .white }
 }
 
 extension AppearanceMode {
@@ -94,7 +100,7 @@ struct Pill: View {
         // Plain `color` text on a 14%-tint background reads under WCAG AA for several of our
         // status colors; mixing toward the current label color keeps the hue but darkens (light
         // mode) or lightens (dark mode) it enough to stay legible, and adapts automatically.
-        .foregroundStyle(filled ? .white : color.mix(with: .primary, by: 0.35))
+        .foregroundStyle(filled ? color.accessibleForeground : color.mix(with: .primary, by: 0.35))
         .background(filled ? color : color.opacity(0.18), in: Capsule())
     }
 }
@@ -189,7 +195,7 @@ extension View {
     /// The hero always carries fixed white text, so a pale club hex needs a stronger mix
     /// toward black/night than a dark one does to stay readable.
     func heroBackground(_ tint: Color) -> some View {
-        let strong = tint.relativeLuminance > 0.45
+        let strong = tint.relativeLuminance > Color.luminanceNeedingDarkText
         return background {
             LinearGradient(colors: [tint.mix(with: .black, by: strong ? 0.4 : 0.15),
                                     tint.mix(with: Theme.night, by: strong ? 0.8 : 0.55)],
