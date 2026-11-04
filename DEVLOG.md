@@ -10,6 +10,19 @@ Running notes for this branch, kept so a new session (human or Claude) doesn't h
 
 All three built clean (`BUILD SUCCEEDED`) and are pushed to `origin/feature/calendar-sync`.
 
+## Handoff 2026-11-04
+
+**Shipped and pushed to `main`** (`ba762e1`, on top of the `48520dc` merge): a ponytail-review pass over the calendar-sync + HIG-fixes merge found and fixed three issues — see `BUGS.md` for the day-label bug and its regression test. Summary:
+1. `AppState`: typing in the Kürzel/Prefix `TextField`s no longer fires a full `CalendarSync.run()` per keystroke — debounced via a cancellable `Task` (600ms, `scheduleCalendarSync()`).
+2. `CalendarSync.upsert`/`upsertLinked`: main + linked (Treffpunkt/Abfahrt) events are now diffed against the existing `EKEvent` before writing, instead of rewriting every tracked entry (with a fresh "Synchronisiert …" timestamp) on every sync pass regardless of whether anything changed.
+3. `EventDates.groupedByDay` now prefers `datetime` the same way `start(of:)`/`end(of:)` do — fixes the day-section header disagreeing with "Als Nächstes" (see `BUGS.md`, "Fixed, am Gerät zu überprüfen" — needs confirmation on the real account, not reproducible with demo data).
+
+All of `MyIceKit`'s 25 tests pass; app builds clean; checked in the Simulator (demo mode, schedule + settings screens render correctly, no regression).
+
+**Not done:** a second ponytail-review pass was started on this same commit (`ba762e1`) at the user's request, to double-check the fix itself — it got interrupted before producing findings. Re-run `/ponytail-review` on `ba762e1` if that check is still wanted; nothing in it has been verified yet beyond the diff shown above.
+
+**Also this session:** built a graphify knowledge graph of the repo (`graphify-out/`, gitignored, local only — not shared, regenerate with `/graphify` if needed elsewhere). Top finding worth a look: `AppState` is a god node (90 edges, bridges nearly every community) — worth asking whether that coupling is deliberate or due for a split.
+
 ## Open: no upcoming events after a real (non-demo) login
 
 Reported 2026-10-30: after logging in with a real account in the Simulator, *Spiele & Trainings* shows only past entries, no upcoming ones.
