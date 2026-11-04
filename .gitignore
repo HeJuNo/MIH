@@ -15,3 +15,5 @@ buildlog/
 *.ipa
 *.dSYM.zip
 *.mobileprovision
+.scratch/
+graphify-out/

@@ -483,30 +483,44 @@ final class AppState {
     func setCalendarTitlePrefixEnabled(_ on: Bool) {
         calendarTitlePrefixEnabled = on
         env.settings.calendarTitlePrefixEnabled = on
-        Task { await syncCalendarNow() }
+        scheduleCalendarSync()
     }
 
     func setCalendarTitlePrefix(_ prefix: String) {
         calendarTitlePrefix = prefix
         env.settings.calendarTitlePrefix = prefix
-        Task { await syncCalendarNow() }
+        scheduleCalendarSync()
     }
 
     func setClubAbbreviation(_ abbreviation: String, for clubID: String) {
         clubAbbreviations[clubID] = abbreviation
         env.settings.clubAbbreviations = clubAbbreviations
-        Task { await syncCalendarNow() }
+        scheduleCalendarSync()
     }
 
     func setCalendarIdentifier(_ id: String?) {
         calendarIdentifier = id
         env.settings.calendarIdentifier = id
-        Task { await syncCalendarNow() }
+        scheduleCalendarSync()
     }
 
     func loadCalendarOptions() async {
         calendarOptions = await env.calendarSync.availableCalendars()
         calendarIdentifier = env.settings.calendarIdentifier   // CalendarSync may have auto-created the dedicated one
+    }
+
+    private var pendingCalendarSync: Task<Void, Never>?
+
+    /// Debounces rapid setter calls (typing in the Kürzel/prefix `TextField`s fires on every
+    /// keystroke) into a single resync 600ms after the last one, instead of running a full
+    /// `CalendarSync.run()` — up to hundreds of EventKit writes — per character typed.
+    private func scheduleCalendarSync() {
+        pendingCalendarSync?.cancel()
+        pendingCalendarSync = Task {
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { return }
+            await syncCalendarNow()
+        }
     }
 
     private func syncCalendarNow() async {

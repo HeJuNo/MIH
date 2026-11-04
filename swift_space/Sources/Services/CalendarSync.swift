@@ -163,17 +163,23 @@ actor CalendarSync {
             mapping = CalendarMapping()
             return
         }
-        let end = EventDates.end(of: entry.event).map { $0 > start ? $0 : nil } ?? nil
+        let end = EventDates.end(of: entry.event).flatMap { $0 > start ? $0 : nil }
         let resolvedEnd = end ?? start.addingTimeInterval(90 * 60)
 
+        let isNew = mapping.mainEventID == nil
         let main = event(withID: mapping.mainEventID, calendar: calendar)
         let mainTitle = title(for: entry, team: team)
-        main.title = mainTitle
-        main.location = entry.event.place
-        main.startDate = start
-        main.endDate = resolvedEnd
-        main.notes = notes(for: entry, changes: changes)
-        try? store.save(main, span: .thisEvent, commit: false)
+        let content = notes(for: entry, changes: changes)
+        let unchanged = !isNew && main.title == mainTitle && main.location == entry.event.place
+            && main.startDate == start && main.endDate == resolvedEnd && contentOnly(of: main.notes) == content
+        if !unchanged {
+            main.title = mainTitle
+            main.location = entry.event.place
+            main.startDate = start
+            main.endDate = resolvedEnd
+            main.notes = stamped(content)
+            try? store.save(main, span: .thisEvent, commit: false)
+        }
         mapping.mainEventID = main.eventIdentifier
 
         upsertLinked(.meeting, entry: entry, mainStart: start, mainTitle: mainTitle, team: team, calendar: calendar,
@@ -203,11 +209,18 @@ actor CalendarSync {
         let ek = event(withID: identifier, calendar: calendar)
         // "Treffpunkt"/"Abfahrt" mirrors the main title's "PREFIX TEAM …" shape instead of
         // prefixing the full main title, e.g. main "PREFIX TEAM Eistraining" -> "PREFIX TEAM Treffpunkt".
-        ek.title = kind == .meeting ? linkedTitle(for: entry, team: team, label: label) : "\(label): \(mainTitle)"
-        ek.location = locationText.isEmpty ? nil : locationText
-        ek.startDate = start
-        ek.endDate = max(mainStart, start.addingTimeInterval(60))
-        try? self.store.save(ek, span: .thisEvent, commit: false)
+        let ekTitle = kind == .meeting ? linkedTitle(for: entry, team: team, label: label) : "\(label): \(mainTitle)"
+        let ekLocation = locationText.isEmpty ? nil : locationText
+        let ekEnd = max(mainStart, start.addingTimeInterval(60))
+        let unchanged = identifier != nil && ek.title == ekTitle && ek.location == ekLocation
+            && ek.startDate == start && ek.endDate == ekEnd
+        if !unchanged {
+            ek.title = ekTitle
+            ek.location = ekLocation
+            ek.startDate = start
+            ek.endDate = ekEnd
+            try? self.store.save(ek, span: .thisEvent, commit: false)
+        }
         writeID(ek.eventIdentifier)
     }
 
@@ -268,8 +281,24 @@ actor CalendarSync {
             }
             sections.append("Änderungen:\n" + lines.joined(separator: "\n"))
         }
-        sections.append("Synchronisiert \(Date().formatted(date: .abbreviated, time: .shortened))")
         return sections.joined(separator: "\n\n")
+    }
+
+    /// Appends the "last synced" marker. Kept separate from `notes` so an unchanged event's
+    /// content can be compared without the ever-changing timestamp (see `contentOnly`) —
+    /// otherwise every sync pass would look like a real change and rewrite every event.
+    private func stamped(_ content: String) -> String {
+        let stamp = "Synchronisiert \(Date().formatted(date: .abbreviated, time: .shortened))"
+        return content.isEmpty ? stamp : "\(content)\n\n\(stamp)"
+    }
+
+    /// Strips the trailing "Synchronisiert …" marker `stamped` adds, so a stored event's notes
+    /// can be compared against freshly computed content regardless of when it was last written.
+    private func contentOnly(of notes: String?) -> String {
+        guard let notes,
+              let range = notes.range(of: #"(?:\n\n)?Synchronisiert .+$"#, options: .regularExpression)
+        else { return notes ?? "" }
+        return String(notes[..<range.lowerBound])
     }
 
     private func participantsText(_ d: EventDetail) -> String {

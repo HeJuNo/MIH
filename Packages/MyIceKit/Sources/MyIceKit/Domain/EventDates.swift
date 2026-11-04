@@ -65,11 +65,14 @@ public enum EventDates {
     }
 
     /// Groups events by calendar day, preserving server order (the original groups by formatted label).
+    /// Prefers `datetime` the same way `start(of:)` does — must agree with it, or a `date`/`datetime`
+    /// mismatch from the backend puts "Als Nächstes" and the day-section header on different days
+    /// for the same event.
     public static func groupedByDay(_ events: [Event]) -> [(day: Date, events: [Event])] {
         var order: [Date] = []
         var buckets: [Date: [Event]] = [:]
         for e in events {
-            guard let d = parseDay(e.date) ?? start(of: e) else { continue }
+            guard let d = start(of: e) ?? parseDay(e.date) else { continue }
             let key = Calendar.current.startOfDay(for: d)
             if buckets[key] == nil { order.append(key) }
             buckets[key, default: []].append(e)
