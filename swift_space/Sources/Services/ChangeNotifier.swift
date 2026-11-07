@@ -20,7 +20,6 @@ final class ChangeNotifier: Sendable {
         (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     }
 
-    /// Returns the number of notifications scheduled.
     func post(_ changes: [EventChange]) async -> Int {
         guard !changes.isEmpty else { return 0 }
         let center = UNUserNotificationCenter.current()
