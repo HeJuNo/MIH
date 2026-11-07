@@ -169,17 +169,8 @@ actor CalendarSync {
         let isNew = mapping.mainEventID == nil
         let main = event(withID: mapping.mainEventID, calendar: calendar)
         let mainTitle = title(for: entry, team: team)
-        let content = notes(for: entry, changes: changes)
-        let unchanged = !isNew && main.title == mainTitle && main.location == entry.event.place
-            && main.startDate == start && main.endDate == resolvedEnd && contentOnly(of: main.notes) == content
-        if !unchanged {
-            main.title = mainTitle
-            main.location = entry.event.place
-            main.startDate = start
-            main.endDate = resolvedEnd
-            main.notes = stamped(content)
-            try? store.save(main, span: .thisEvent, commit: false)
-        }
+        apply(title: mainTitle, location: entry.event.place, start: start, end: resolvedEnd,
+              notes: notes(for: entry, changes: changes), to: main, isNew: isNew)
         mapping.mainEventID = main.eventIdentifier
 
         upsertLinked(.meeting, entry: entry, mainStart: start, mainTitle: mainTitle, team: team, calendar: calendar,
@@ -210,18 +201,27 @@ actor CalendarSync {
         // "Treffpunkt"/"Abfahrt" mirrors the main title's "PREFIX TEAM …" shape instead of
         // prefixing the full main title, e.g. main "PREFIX TEAM Eistraining" -> "PREFIX TEAM Treffpunkt".
         let ekTitle = kind == .meeting ? linkedTitle(for: entry, team: team, label: label) : "\(label): \(mainTitle)"
-        let ekLocation = locationText.isEmpty ? nil : locationText
-        let ekEnd = max(mainStart, start.addingTimeInterval(60))
-        let unchanged = identifier != nil && ek.title == ekTitle && ek.location == ekLocation
-            && ek.startDate == start && ek.endDate == ekEnd
-        if !unchanged {
-            ek.title = ekTitle
-            ek.location = ekLocation
-            ek.startDate = start
-            ek.endDate = ekEnd
-            try? self.store.save(ek, span: .thisEvent, commit: false)
-        }
+        apply(title: ekTitle, location: locationText.isEmpty ? nil : locationText, start: start,
+              end: max(mainStart, start.addingTimeInterval(60)), to: ek, isNew: identifier == nil)
         writeID(ek.eventIdentifier)
+    }
+
+    /// Writes an `EKEvent`'s fields only if one of them actually differs from what's stored —
+    /// otherwise every sync pass would rewrite every tracked entry regardless of whether
+    /// anything changed. Shared by the main event and its Treffpunkt/Abfahrt linked events.
+    @discardableResult
+    private func apply(title: String, location: String?, start: Date, end: Date, notes: String? = nil,
+                       to ek: EKEvent, isNew: Bool) -> Bool {
+        let unchanged = !isNew && ek.title == title && ek.location == location && ek.startDate == start
+            && ek.endDate == end && (notes == nil || contentOnly(of: ek.notes) == notes)
+        guard !unchanged else { return false }
+        ek.title = title
+        ek.location = location
+        ek.startDate = start
+        ek.endDate = end
+        if let notes { ek.notes = stamped(notes) }
+        try? store.save(ek, span: .thisEvent, commit: false)
+        return true
     }
 
     private func event(withID id: String?, calendar: EKCalendar) -> EKEvent {
@@ -284,11 +284,15 @@ actor CalendarSync {
         return sections.joined(separator: "\n\n")
     }
 
+    /// Shared by `stamped` and `contentOnly` so the two can't drift apart — if they stop
+    /// agreeing on the marker text, every event looks changed forever.
+    private static let syncStampPrefix = "Synchronisiert"
+
     /// Appends the "last synced" marker. Kept separate from `notes` so an unchanged event's
     /// content can be compared without the ever-changing timestamp (see `contentOnly`) —
     /// otherwise every sync pass would look like a real change and rewrite every event.
     private func stamped(_ content: String) -> String {
-        let stamp = "Synchronisiert \(Date().formatted(date: .abbreviated, time: .shortened))"
+        let stamp = "\(Self.syncStampPrefix) \(Date().formatted(date: .abbreviated, time: .shortened))"
         return content.isEmpty ? stamp : "\(content)\n\n\(stamp)"
     }
 
@@ -296,7 +300,7 @@ actor CalendarSync {
     /// can be compared against freshly computed content regardless of when it was last written.
     private func contentOnly(of notes: String?) -> String {
         guard let notes,
-              let range = notes.range(of: #"(?:\n\n)?Synchronisiert .+$"#, options: .regularExpression)
+              let range = notes.range(of: "(?:\\n\\n)?\(Self.syncStampPrefix) .+$", options: .regularExpression)
         else { return notes ?? "" }
         return String(notes[..<range.lowerBound])
     }
