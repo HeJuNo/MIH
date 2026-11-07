@@ -167,10 +167,10 @@ actor CalendarSync {
         let resolvedEnd = end ?? start.addingTimeInterval(90 * 60)
 
         let isNew = mapping.mainEventID == nil
-        let main = event(withID: mapping.mainEventID, calendar: calendar)
+        let main = event(withID: mapping.mainEventID)
         let mainTitle = title(for: entry, team: team)
         apply(title: mainTitle, location: entry.event.place, start: start, end: resolvedEnd,
-              notes: notes(for: entry, changes: changes), to: main, isNew: isNew)
+              notes: notes(for: entry, changes: changes), calendar: calendar, to: main, isNew: isNew)
         mapping.mainEventID = main.eventIdentifier
 
         upsertLinked(.meeting, entry: entry, mainStart: start, mainTitle: mainTitle, team: team, calendar: calendar,
@@ -197,24 +197,32 @@ actor CalendarSync {
             return
         }
         let label = nonEmpty(rawLabel) ?? fallbackLabel
-        let ek = event(withID: identifier, calendar: calendar)
+        let ek = event(withID: identifier)
         // "Treffpunkt"/"Abfahrt" mirrors the main title's "PREFIX TEAM …" shape instead of
         // prefixing the full main title, e.g. main "PREFIX TEAM Eistraining" -> "PREFIX TEAM Treffpunkt".
         let ekTitle = kind == .meeting ? linkedTitle(for: entry, team: team, label: label) : "\(label): \(mainTitle)"
         apply(title: ekTitle, location: locationText.isEmpty ? nil : locationText, start: start,
-              end: max(mainStart, start.addingTimeInterval(60)), to: ek, isNew: identifier == nil)
+              end: max(mainStart, start.addingTimeInterval(60)), calendar: calendar, to: ek, isNew: identifier == nil)
         writeID(ek.eventIdentifier)
     }
 
-    /// Writes an `EKEvent`'s fields only if one of them actually differs from what's stored —
-    /// otherwise every sync pass would rewrite every tracked entry regardless of whether
-    /// anything changed. Shared by the main event and its Treffpunkt/Abfahrt linked events.
+    /// Writes an `EKEvent`'s fields (calendar included) only if one of them actually differs
+    /// from what's stored — otherwise every sync pass would rewrite every tracked entry
+    /// regardless of whether anything changed. Shared by the main event and its
+    /// Treffpunkt/Abfahrt linked events.
+    ///
+    /// `calendar` must be compared and assigned here, not by the caller before this runs:
+    /// assigning `ek.calendar` before the unchanged-check would make the check always see the
+    /// already-reassigned value, so picking a new sync calendar in Settings would never be
+    /// detected as a change and `store.save` would never be called to persist the move.
     @discardableResult
     private func apply(title: String, location: String?, start: Date, end: Date, notes: String? = nil,
-                       to ek: EKEvent, isNew: Bool) -> Bool {
-        let unchanged = !isNew && ek.title == title && ek.location == location && ek.startDate == start
+                       calendar: EKCalendar, to ek: EKEvent, isNew: Bool) -> Bool {
+        let unchanged = !isNew && ek.calendar?.calendarIdentifier == calendar.calendarIdentifier
+            && ek.title == title && ek.location == location && ek.startDate == start
             && ek.endDate == end && (notes == nil || contentOnly(of: ek.notes) == notes)
         guard !unchanged else { return false }
+        ek.calendar = calendar
         ek.title = title
         ek.location = location
         ek.startDate = start
@@ -224,10 +232,8 @@ actor CalendarSync {
         return true
     }
 
-    private func event(withID id: String?, calendar: EKCalendar) -> EKEvent {
-        let ek = id.flatMap { store.event(withIdentifier: $0) } ?? EKEvent(eventStore: store)
-        ek.calendar = calendar
-        return ek
+    private func event(withID id: String?) -> EKEvent {
+        id.flatMap { store.event(withIdentifier: $0) } ?? EKEvent(eventStore: store)
     }
 
     private func removeEvent(_ id: String) {
