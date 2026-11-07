@@ -105,9 +105,7 @@ struct LogView: View {
     }
 
     private func dayTitle(_ day: Date) -> String {
-        if Calendar.current.isDateInToday(day) { return "Heute" }
-        if Calendar.current.isDateInYesterday(day) { return "Gestern" }
-        return day.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de))
+        relativeDayLabel(for: day) ?? day.formatted(.dateTime.weekday(.wide).day().month(.wide).locale(.de))
     }
 }
 
