@@ -32,28 +32,56 @@ final class AppState {
     private(set) var isSyncing = false
     private(set) var unseenChanges = 0
 
-    // Settings mirror
-    private(set) var preferences = NotificationPreferences()
-    private(set) var disabledCategories: Set<ChangeKind.Category> = []
-    private(set) var refreshMinutes = 30
-    private(set) var mapProvider: MapProvider = .apple
-    private(set) var appearance: AppearanceMode = .system
-    private(set) var storedScheduleFilter = ScheduleFilter()
+    // System status — live query results, not persisted by SettingsStore.
     private(set) var notificationStatus: UNAuthorizationStatus = .notDetermined
     private(set) var backgroundRefreshStatus: UIBackgroundRefreshStatus = .available
-    private(set) var lastBackgroundRun: Date?
-    private(set) var calendarSyncEnabled = false
-    private(set) var calendarTitlePrefixEnabled = false
-    private(set) var calendarTitlePrefix = ""
-    private(set) var clubAbbreviations: [String: String] = [:]
-    private(set) var calendarIdentifier: String?
     private(set) var calendarAuthStatus: EKAuthorizationStatus = .notDetermined
     private(set) var calendarOptions: [(id: String, title: String)] = []
 
-    // Protocol
-    private(set) var loggingEnabled = false
-    private(set) var logLevel: LogLevel = .info
-    private(set) var logAreas: Set<LogArea> = Set(LogArea.allCases)
+    /// Everything `SettingsStore` persists, mirrored here so views stay reactive —
+    /// `SettingsStore` itself has to stay a plain `Sendable` class (the background task
+    /// reads it off the main actor), so it can't be `@Observable`.
+    struct Settings: Equatable {
+        var preferences = NotificationPreferences()
+        var disabledCategories: Set<ChangeKind.Category> = []
+        var refreshMinutes = 30
+        var mapProvider: MapProvider = .apple
+        var appearance: AppearanceMode = .system
+        var storedScheduleFilter = ScheduleFilter()
+        var lastBackgroundRun: Date?
+        var loggingEnabled = false
+        var logLevel: LogLevel = .info
+        var logAreas: Set<LogArea> = Set(LogArea.allCases)
+        var calendarSyncEnabled = false
+        var calendarTitlePrefixEnabled = false
+        var calendarTitlePrefix = ""
+        var clubAbbreviations: [String: String] = [:]
+        var calendarIdentifier: String?
+    }
+    private(set) var settings = Settings()
+
+    var preferences: NotificationPreferences { settings.preferences }
+    var disabledCategories: Set<ChangeKind.Category> { settings.disabledCategories }
+    var refreshMinutes: Int { settings.refreshMinutes }
+    var mapProvider: MapProvider { settings.mapProvider }
+    var appearance: AppearanceMode { settings.appearance }
+    var lastBackgroundRun: Date? { settings.lastBackgroundRun }
+    var loggingEnabled: Bool { settings.loggingEnabled }
+    var logLevel: LogLevel { settings.logLevel }
+    var logAreas: Set<LogArea> { settings.logAreas }
+    var calendarSyncEnabled: Bool { settings.calendarSyncEnabled }
+    var calendarTitlePrefixEnabled: Bool { settings.calendarTitlePrefixEnabled }
+    var calendarTitlePrefix: String { settings.calendarTitlePrefix }
+    var clubAbbreviations: [String: String] { settings.clubAbbreviations }
+    var calendarIdentifier: String? { settings.calendarIdentifier }
+
+    /// Writes a setting to both the mirror and the store in one call, instead of the
+    /// two-line "mirror = value; env.settings.path = value" every setter used to repeat.
+    private func writeThrough<T: Equatable>(_ value: T, _ mirror: WritableKeyPath<Settings, T>,
+                                             _ store: ReferenceWritableKeyPath<SettingsStore, T>) {
+        settings[keyPath: mirror] = value
+        env.settings[keyPath: store] = value
+    }
 
     // Navigation
     var selectedTab: Tab = .schedule
@@ -77,11 +105,11 @@ final class AppState {
             changeLog = DemoData.changes(for: entries)
             unseenChanges = 2
             lastSync = .now.addingTimeInterval(-420)
-            preferences.set(false, for: entries[3].id)
+            settings.preferences.set(false, for: entries[3].id)
             clubLogos = DemoData.clubLogos()
             clubLogoPreviews = clubLogos
             // Not persisted, so screenshots never depend on an earlier run.
-            storedScheduleFilter = ScheduleFilter(kind: DemoData.value(after: "-demoFilter").flatMap(KindFilter.init(rawValue:)) ?? .all,
+            settings.storedScheduleFilter = ScheduleFilter(kind: DemoData.value(after: "-demoFilter").flatMap(KindFilter.init(rawValue:)) ?? .all,
                                                   clubID: DemoData.value(after: "-demoClub"))
             if let i = DemoData.detailIndex, entries.indices.contains(i) { schedulePath = [entries[i].id] }
             if DemoData.opensPast {
@@ -90,8 +118,8 @@ final class AppState {
                     schedulePath.append(archive[i].id)
                 }
             }
-            loggingEnabled = DemoData.showsLog
-            logLevel = .debug
+            settings.loggingEnabled = DemoData.showsLog
+            settings.logLevel = .debug
             if let tab = UserDefaults.standard.string(forKey: "demoTab") {
                 selectedTab = tab == "changes" ? .changes : tab == "settings" ? .settings : tab == "log" ? .log : .schedule
             }
@@ -132,7 +160,7 @@ final class AppState {
         changeLog = state.changeLog
         lastSync = state.lastSync
         lastError = state.lastError
-        lastBackgroundRun = env.settings.lastBackgroundRun
+        settings.lastBackgroundRun = env.settings.lastBackgroundRun
         unseenChanges = changeLog.filter { !seenChangeIDs.contains($0.id) }.count
     }
 
@@ -146,7 +174,7 @@ final class AppState {
         let outcome = await SyncCoordinator.run(env, reason: reason)
         if case .failed(let message) = outcome { lastError = message }
         await reloadFromStore()
-        preferences = env.settings.preferences
+        settings.preferences = env.settings.preferences
     }
 
     // MARK: Session
@@ -314,28 +342,28 @@ final class AppState {
     func isNotifying(_ eventKey: String) -> Bool { preferences.isEnabled(eventKey) }
 
     func setNotifying(_ enabled: Bool, for eventKey: String) {
-        preferences.set(enabled, for: eventKey)
-        env.settings.preferences = preferences
+        var p = settings.preferences
+        p.set(enabled, for: eventKey)
+        writeThrough(p, \.preferences, \.preferences)
     }
 
     func setNotifyByDefault(_ enabled: Bool) {
         // Keep explicit per-event choices; only the default flips.
-        var p = preferences
+        var p = settings.preferences
         let explicit = p.overrides
         p.enabledByDefault = enabled
         p.overrides = explicit.filter { $0.value != enabled }
-        preferences = p
-        env.settings.preferences = p
+        writeThrough(p, \.preferences, \.preferences)
     }
 
     func setCategory(_ category: ChangeKind.Category, enabled: Bool) {
-        if enabled { disabledCategories.remove(category) } else { disabledCategories.insert(category) }
-        env.settings.disabledCategories = disabledCategories
+        var cats = settings.disabledCategories
+        if enabled { cats.remove(category) } else { cats.insert(category) }
+        writeThrough(cats, \.disabledCategories, \.disabledCategories)
     }
 
     func setRefreshMinutes(_ minutes: Int) {
-        refreshMinutes = minutes
-        env.settings.refreshMinutes = minutes
+        writeThrough(minutes, \.refreshMinutes, \.refreshMinutes)
         BackgroundRefresh.schedule()
     }
 
@@ -387,20 +415,15 @@ final class AppState {
     // MARK: Private
 
     private func loadSettings() {
-        preferences = env.settings.preferences
-        disabledCategories = env.settings.disabledCategories
-        refreshMinutes = env.settings.refreshMinutes
-        mapProvider = env.settings.mapProvider
-        appearance = env.settings.appearance
-        storedScheduleFilter = env.settings.scheduleFilter
-        loggingEnabled = env.settings.loggingEnabled
-        logLevel = env.settings.logLevel
-        logAreas = env.settings.logAreas
-        calendarSyncEnabled = env.settings.calendarSyncEnabled
-        calendarTitlePrefixEnabled = env.settings.calendarTitlePrefixEnabled
-        calendarTitlePrefix = env.settings.calendarTitlePrefix
-        clubAbbreviations = env.settings.clubAbbreviations
-        calendarIdentifier = env.settings.calendarIdentifier
+        settings = Settings(preferences: env.settings.preferences, disabledCategories: env.settings.disabledCategories,
+                             refreshMinutes: env.settings.refreshMinutes, mapProvider: env.settings.mapProvider,
+                             appearance: env.settings.appearance, storedScheduleFilter: env.settings.scheduleFilter,
+                             lastBackgroundRun: env.settings.lastBackgroundRun, loggingEnabled: env.settings.loggingEnabled,
+                             logLevel: env.settings.logLevel, logAreas: env.settings.logAreas,
+                             calendarSyncEnabled: env.settings.calendarSyncEnabled,
+                             calendarTitlePrefixEnabled: env.settings.calendarTitlePrefixEnabled,
+                             calendarTitlePrefix: env.settings.calendarTitlePrefix,
+                             clubAbbreviations: env.settings.clubAbbreviations, calendarIdentifier: env.settings.calendarIdentifier)
     }
 
     // MARK: Protocol
@@ -408,22 +431,20 @@ final class AppState {
     func setLoggingEnabled(_ on: Bool) {
         if on {
             env.settings.loggingEnabled = true
-            env.log(.info, .app, "Logging enabled (from \(logLevel.title))")
+            env.log(.info, .app, "Logging enabled (from \(settings.logLevel.title))")
         } else {
             env.log(.info, .app, "Logging disabled")
             env.settings.loggingEnabled = false
         }
-        loggingEnabled = on
+        settings.loggingEnabled = on
     }
 
-    func setLogLevel(_ level: LogLevel) {
-        logLevel = level
-        env.settings.logLevel = level
-    }
+    func setLogLevel(_ level: LogLevel) { writeThrough(level, \.logLevel, \.logLevel) }
 
     func setLogArea(_ area: LogArea, enabled: Bool) {
-        if enabled { logAreas.insert(area) } else { logAreas.remove(area) }
-        env.settings.logAreas = logAreas
+        var areas = settings.logAreas
+        if enabled { areas.insert(area) } else { areas.remove(area) }
+        writeThrough(areas, \.logAreas, \.logAreas)
     }
 
     func logEntries() async -> [LogEntry] {
@@ -436,25 +457,16 @@ final class AppState {
 
     /// The stored filter, minus a club the player no longer belongs to (or a single remaining club).
     var scheduleFilter: ScheduleFilter {
-        var f = storedScheduleFilter
+        var f = settings.storedScheduleFilter
         if let id = f.clubID, !hasMultipleClubs || !clubs.contains(where: { $0.id == id }) { f.clubID = nil }
         return f
     }
 
-    func setScheduleFilter(_ f: ScheduleFilter) {
-        storedScheduleFilter = f
-        env.settings.scheduleFilter = f
-    }
+    func setScheduleFilter(_ f: ScheduleFilter) { writeThrough(f, \.storedScheduleFilter, \.scheduleFilter) }
 
-    func setMapProvider(_ p: MapProvider) {
-        mapProvider = p
-        env.settings.mapProvider = p
-    }
+    func setMapProvider(_ p: MapProvider) { writeThrough(p, \.mapProvider, \.mapProvider) }
 
-    func setAppearance(_ a: AppearanceMode) {
-        appearance = a
-        env.settings.appearance = a
-    }
+    func setAppearance(_ a: AppearanceMode) { writeThrough(a, \.appearance, \.appearance) }
 
     // MARK: Calendar sync
 
@@ -468,8 +480,7 @@ final class AppState {
     }
 
     func setCalendarSyncEnabled(_ on: Bool) {
-        calendarSyncEnabled = on
-        env.settings.calendarSyncEnabled = on
+        writeThrough(on, \.calendarSyncEnabled, \.calendarSyncEnabled)
         Task {
             if on {
                 if calendarAuthStatus != .fullAccess { await requestCalendarAccess() }
@@ -481,32 +492,30 @@ final class AppState {
     }
 
     func setCalendarTitlePrefixEnabled(_ on: Bool) {
-        calendarTitlePrefixEnabled = on
-        env.settings.calendarTitlePrefixEnabled = on
+        writeThrough(on, \.calendarTitlePrefixEnabled, \.calendarTitlePrefixEnabled)
         scheduleCalendarSync()
     }
 
     func setCalendarTitlePrefix(_ prefix: String) {
-        calendarTitlePrefix = prefix
-        env.settings.calendarTitlePrefix = prefix
+        writeThrough(prefix, \.calendarTitlePrefix, \.calendarTitlePrefix)
         scheduleCalendarSync()
     }
 
     func setClubAbbreviation(_ abbreviation: String, for clubID: String) {
-        clubAbbreviations[clubID] = abbreviation
-        env.settings.clubAbbreviations = clubAbbreviations
+        var abbrevs = settings.clubAbbreviations
+        abbrevs[clubID] = abbreviation
+        writeThrough(abbrevs, \.clubAbbreviations, \.clubAbbreviations)
         scheduleCalendarSync()
     }
 
     func setCalendarIdentifier(_ id: String?) {
-        calendarIdentifier = id
-        env.settings.calendarIdentifier = id
+        writeThrough(id, \.calendarIdentifier, \.calendarIdentifier)
         scheduleCalendarSync()
     }
 
     func loadCalendarOptions() async {
         calendarOptions = await env.calendarSync.availableCalendars()
-        calendarIdentifier = env.settings.calendarIdentifier   // CalendarSync may have auto-created the dedicated one
+        settings.calendarIdentifier = env.settings.calendarIdentifier   // CalendarSync may have auto-created the dedicated one
     }
 
     private var pendingCalendarSync: Task<Void, Never>?

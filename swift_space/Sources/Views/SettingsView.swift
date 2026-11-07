@@ -1,8 +1,6 @@
-import EventKit
 import MyIceKit
 import PhotosUI
 import SwiftUI
-import UserNotifications
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
@@ -349,17 +347,27 @@ private struct ClubSummaryRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            logoImage.frame(width: 26, height: 26)
+            ClubLogoView(image: state.clubLogos[club.id]).frame(width: 26, height: 26)
             Text(club.clubName ?? club.id).font(.subheadline)
             Spacer()
             let count = state.entries.filter { $0.clubID == club.id }.count
             Text(count == 1 ? "1 Termin" : "\(count) Termine").font(.caption).foregroundStyle(.secondary)
         }
     }
+}
 
-    @ViewBuilder private var logoImage: some View {
-        if let logo = state.clubLogos[club.id] {
-            Image(uiImage: logo).resizable().scaledToFit()
+/// A club's logo, or a placeholder shield while none has loaded (or the club has none).
+/// `placeholderPadding` matches the small menu-row rendering (`nil`) or the bigger settings
+/// preview (set), which also resizes the placeholder itself.
+private struct ClubLogoView: View {
+    let image: UIImage?
+    var placeholderPadding: CGFloat?
+
+    var body: some View {
+        if let image {
+            Image(uiImage: image).resizable().scaledToFit()
+        } else if let placeholderPadding {
+            Image(systemName: "shield.fill").resizable().scaledToFit().foregroundStyle(.tint).padding(placeholderPadding)
         } else {
             Image(systemName: "shield.fill").foregroundStyle(.tint)
         }
@@ -453,13 +461,7 @@ struct ClubSettingsView: View {
         }
     }
 
-    @ViewBuilder private var logoPreview: some View {
-        if let logo = state.clubLogoPreviews[club.id] {
-            Image(uiImage: logo).resizable().scaledToFit()
-        } else {
-            Image(systemName: "shield.fill").resizable().scaledToFit().foregroundStyle(.tint).padding(24)
-        }
-    }
+    private var logoPreview: some View { ClubLogoView(image: state.clubLogoPreviews[club.id], placeholderPadding: 24) }
 }
 
 private struct CategoriesView: View {

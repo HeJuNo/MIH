@@ -5,7 +5,7 @@ import SwiftUI
 struct EventDetailView: View {
     @Environment(AppState.self) private var state
     let eventKey: String
-    @State private var section: Section = {
+    @State private var section: DetailTab = {
         #if DEBUG
         switch DemoData.section {
         case "people": return .people
@@ -17,7 +17,7 @@ struct EventDetailView: View {
     }()
     @State private var loading = false
 
-    enum Section: String, CaseIterable, Identifiable {
+    enum DetailTab: String, CaseIterable, Identifiable {
         case overview = "Übersicht", people = "Personen", messages = "Mitteilungen"
         var id: Self { self }
     }
@@ -34,20 +34,20 @@ struct EventDetailView: View {
     private func content(_ entry: TrackedEntry) -> some View {
         let notifying = state.isNotifying(entry.id)
         return List {
-            SwiftUI.Section {
+            Section {
                 DetailHero(entry: entry)
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
             }
 
             if let cancelledAt = entry.cancelledAt {
-                SwiftUI.Section {
+                Section {
                     CancelledNotice(cancelledAt: cancelledAt)
                 }
             }
 
             Picker("Bereich", selection: $section) {
-                ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
+                ForEach(DetailTab.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -176,11 +176,11 @@ private struct OverviewSection: View {
     private var detail: EventDetail? { entry.detail }
 
     var body: some View {
-        SwiftUI.Section {
+        Section {
             AttendanceRow(entry: entry)
         }
 
-        SwiftUI.Section {
+        Section {
             DetailRow(symbol: "mappin.and.ellipse", label: "Ort", value: event.place)
             if let place = event.place, !place.isEmpty, let urls = state.mapProvider.urls(for: place) {
                 Button {
@@ -198,7 +198,7 @@ private struct OverviewSection: View {
         }
 
         if let notes = detail?.notes, !PlainText.from(html: notes).isEmpty {
-            SwiftUI.Section("Notizen") {
+            Section("Notizen") {
                 Text(PlainText.from(html: notes))
                     .textSelection(.enabled)
             }
@@ -320,7 +320,7 @@ private struct PeopleSection: View {
                 .listRowBackground(Color.clear)
         } else {
             if !players.isEmpty, let c {
-                SwiftUI.Section {
+                Section {
                     // 4 columns of text get cramped and clipped at larger Dynamic Type sizes,
                     // same reasoning as EventRow's layout switch below Content Size.
                     if typeSize.isAccessibilitySize {
@@ -354,7 +354,7 @@ private struct PeopleSection: View {
             }
 
             if !staff.isEmpty {
-                SwiftUI.Section("Staff") {
+                Section("Staff") {
                     ForEach(Array(staff.enumerated()), id: \.offset) { _, s in
                         PersonRow(name: name(s.fname, s.lname), trailing: s.role) {
                             Avatar(name: name(s.fname, s.lname), color: .gray)
@@ -364,7 +364,7 @@ private struct PeopleSection: View {
             }
 
             ForEach(positionGroups(players), id: \.title) { group in
-                SwiftUI.Section("\(group.title) · \(group.players.count)") {
+                Section("\(group.title) · \(group.players.count)") {
                     ForEach(Array(group.players.enumerated()), id: \.offset) { _, p in
                         PersonRow(name: name(p.fname, p.lname), trailing: nil) { leading(p) }
                     }
@@ -466,7 +466,7 @@ private struct MessagesSection: View {
         let messages = entry.detail?.notifications ?? []
         let changes = state.changes(for: entry.id)
 
-        SwiftUI.Section("Mitteilungen vom Verein") {
+        Section("Mitteilungen vom Verein") {
             if messages.isEmpty {
                 Text("Keine Mitteilungen zu diesem Termin.").foregroundStyle(.secondary)
             } else {
@@ -498,7 +498,7 @@ private struct MessagesSection: View {
             }
         }
 
-        SwiftUI.Section("Erkannte Änderungen") {
+        Section("Erkannte Änderungen") {
             if changes.isEmpty {
                 Text("Seit Beginn der Überwachung keine Änderungen.").foregroundStyle(.secondary)
             } else {

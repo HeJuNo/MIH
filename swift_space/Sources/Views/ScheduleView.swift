@@ -109,7 +109,7 @@ struct FilterMenu: View {
         }
         .sensoryFeedback(.selection, trigger: filter)
         .accessibilityLabel("Filter")
-        .accessibilityValue(filter.isActive ? ActiveFilterRow.summary(filter, state: state) : "Aus")
+        .accessibilityValue(filter.isActive ? ActiveFilterRow.summary(filter, clubName: state.clubName(filter.clubID)) : "Aus")
         .task(id: state.clubs.map(\.id)) { if state.hasMultipleClubs { await state.loadClubLogos() } }
     }
 
@@ -133,11 +133,12 @@ struct ActiveFilterRow: View {
     var body: some View {
         let filter = state.scheduleFilter
         if filter.isActive {
+            let summary = Self.summary(filter, clubName: state.clubName(filter.clubID))
             Section {
                 Button { state.setScheduleFilter(ScheduleFilter()) } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "line.3.horizontal.decrease.circle.fill").foregroundStyle(.tint)
-                        Text(Self.summary(filter, state: state))
+                        Text(summary)
                             .foregroundStyle(Color.primary)
                             .lineLimit(2)
                         Spacer(minLength: 8)
@@ -147,17 +148,17 @@ struct ActiveFilterRow: View {
                     }
                     .font(.subheadline)
                 }
-                .accessibilityLabel("Gefiltert: \(Self.summary(filter, state: state))")
+                .accessibilityLabel("Gefiltert: \(summary)")
                 .accessibilityHint("Zeigt wieder alle Termine")
             }
         }
     }
 
     /// "Nur Spiele · EHC Musterstadt"
-    static func summary(_ filter: ScheduleFilter, state: AppState) -> String {
+    static func summary(_ filter: ScheduleFilter, clubName: String?) -> String {
         var parts: [String] = []
         if filter.kind != .all { parts.append(filter.kind.title) }
-        if let club = state.clubName(filter.clubID) { parts.append(club) }
+        if let clubName { parts.append(clubName) }
         return parts.joined(separator: " · ")
     }
 }
@@ -281,12 +282,7 @@ private struct DayHeader: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    private var relative: String? {
-        if Calendar.current.isDateInToday(day) { return "Heute" }
-        if Calendar.current.isDateInTomorrow(day) { return "Morgen" }
-        if Calendar.current.isDateInYesterday(day) { return "Gestern" }
-        return nil
-    }
+    private var relative: String? { relativeDayLabel(for: day) }
 }
 
 /// Hero for the next upcoming event: the one colored surface on the screen.

@@ -36,13 +36,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         return true
     }
 
-    // Show change banners while the app is open, too.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions {
         [.banner, .list, .sound]
     }
 
-    // Tapping a change notification opens that event.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard let key = response.notification.request.content.userInfo[ChangeNotifier.eventKeyUserInfo] as? String else { return }
         AppEnvironment.shared.log(.debug, .notifications, "Opened: \(key)")
