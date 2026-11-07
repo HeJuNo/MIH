@@ -99,16 +99,11 @@ final class SyncEngineTests: XCTestCase {
             return (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
     }
-    struct Ctx: RequestContextProviding {
-        func currentToken() async -> String? { "t" }
-        func currentLanguage() async -> String { "de" }
-    }
-
     func testMultiClubMergeArchiveAndNewClubBaseline() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = SyncStore(directory: dir)
         let transport = FakeTransport()
-        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let engine = SyncEngine(api: APIClient(transport: transport, context: TestContext(token: "t")), store: store)
         let t0 = EventDates.parseDateTime("2026-10-18 08:00:00")!
 
         transport.responses["refreshdata#86"] = #"{"app_data":[{"id_game":1,"name":"Spiel","datetime":"2026-10-18T12:40:00","date":"2026-10-18"},{"id_practice":2,"name":"Training","datetime":"2026-10-20T17:00:00","date":"2026-10-20","place":"A"}]}"#
@@ -136,7 +131,7 @@ final class SyncEngineTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = SyncStore(directory: dir)
         let transport = FakeTransport()
-        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let engine = SyncEngine(api: APIClient(transport: transport, context: TestContext(token: "t")), store: store)
         let t0 = EventDates.parseDateTime("2026-10-18 08:00:00")!
         let both = #"{"app_data":[{"id_game":1,"name":"Spiel","datetime":"2026-10-20T12:00:00","date":"2026-10-20","place":"Halle"},{"id_practice":2,"name":"Training","datetime":"2026-10-21T17:00:00","date":"2026-10-21"}]}"#
         let onlyTraining = #"{"app_data":[{"id_practice":2,"name":"Training","datetime":"2026-10-21T17:00:00","date":"2026-10-21"}]}"#
@@ -176,7 +171,7 @@ final class SyncEngineTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = SyncStore(directory: dir)
         let transport = FakeTransport()
-        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let engine = SyncEngine(api: APIClient(transport: transport, context: TestContext(token: "t")), store: store)
         let now = EventDates.parseDateTime("2026-10-18 08:00:00")!
         transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":2,"datetime":"2026-10-20T17:00:00","date":"2026-10-20","health_status":3,"available":0}]}"#
         _ = try await engine.sync(clubIDs: ["86"], playerID: 1, now: now)
@@ -198,7 +193,7 @@ final class SyncEngineTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = SyncStore(directory: dir)
         let transport = FakeTransport()
-        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let engine = SyncEngine(api: APIClient(transport: transport, context: TestContext(token: "t")), store: store)
         let row = #"{"app_data":[{"id_practice":13,"name":"Spezial","datetime":"\#(soon)T17:30:00","date":"\#(soon)"}]}"#
         transport.responses["refreshdata"] = row
         transport.responses["getevent"] = #"{"eventData":{"convocation":{"available":[{"fname":"Adrian","lname":"S"},{"fname":"Jonas","lname":"O"}]}}}"#
@@ -222,7 +217,7 @@ final class SyncEngineTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = SyncStore(directory: dir)
         let transport = FakeTransport()
-        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let engine = SyncEngine(api: APIClient(transport: transport, context: TestContext(token: "t")), store: store)
         transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":1,"datetime":"\#(soon)T17:30:00","date":"\#(soon)","place":"A"},{"id_practice":2,"datetime":"\#(soon)T17:30:00","date":"\#(soon)","place":"A"},{"id_game":3,"datetime":"\#(soon)T12:00:00","date":"\#(soon)","place":"A"}]}"#
         _ = try await engine.sync(clubIDs: ["86"], playerID: 1)
         transport.responses["refreshdata"] = transport.responses["refreshdata"]!.replacingOccurrences(of: "\"A\"", with: "\"B\"")
@@ -236,7 +231,7 @@ final class SyncEngineTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = SyncStore(directory: dir)
         let transport = FakeTransport()
-        let engine = SyncEngine(api: APIClient(transport: transport, context: Ctx()), store: store)
+        let engine = SyncEngine(api: APIClient(transport: transport, context: TestContext(token: "t")), store: store)
         transport.responses["refreshdata"] = #"{"app_data":[{"id_practice":1,"datetime":"\#(soon)T17:30:00","date":"\#(soon)"}]}"#
         transport.responses["getevent"] = #"{"eventData":{"notes":"alt"}}"#
         _ = try await engine.sync(clubIDs: ["86"], playerID: 1)

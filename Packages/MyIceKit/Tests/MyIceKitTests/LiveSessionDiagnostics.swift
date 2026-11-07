@@ -5,12 +5,6 @@ import XCTest
 ///   LIVE_LOGIN_FILE=/path/login.txt LIVE_DUMP_DIR=/tmp/dir swift test --filter LiveSessionDiagnostics
 /// login.txt format: "User: <email>" and "Pass: <password>" (one or two lines).
 final class LiveSessionDiagnostics: XCTestCase {
-    final class Ctx: RequestContextProviding, @unchecked Sendable {
-        var token: String?
-        func currentToken() async -> String? { token }
-        func currentLanguage() async -> String { "de" }
-    }
-
     func testRealAccountRoundTrip() async throws {
         let env = ProcessInfo.processInfo.environment
         guard let file = env["LIVE_LOGIN_FILE"], let raw = try? String(contentsOfFile: file, encoding: .utf8) else {
@@ -19,7 +13,7 @@ final class LiveSessionDiagnostics: XCTestCase {
         let dump = env["LIVE_DUMP_DIR"].map(URL.init(fileURLWithPath:))
         let (email, password) = try parse(raw)
 
-        let ctx = Ctx()
+        let ctx = TestContext()
         let client = APIClient(context: ctx)
 
         let loginData = try await rawData(client, .login(email: email, password: password))
