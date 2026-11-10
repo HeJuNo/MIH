@@ -87,7 +87,7 @@ struct FilterMenu: View {
                 Picker(selection: binding(\.clubID)) {
                     Label("Alle Vereine", systemImage: Self.allClubsSymbol).tag(String?.none)
                     ForEach(state.clubs) { club in
-                        Label { Text(club.clubName ?? club.id) } icon: { logo(club.id) }
+                        Label { Text(state.clubName(club.id) ?? club.id) } icon: { logo(club.id) }
                             .tag(String?.some(club.id))
                     }
                 } label: {

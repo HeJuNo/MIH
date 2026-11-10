@@ -311,9 +311,11 @@ final class AppState {
 
     var hasMultipleClubs: Bool { clubs.count > 1 }
 
+    /// Display name for a club everywhere in the app: its Kürzel when set, else the full name.
     func clubName(_ id: String?) -> String? {
         guard let id else { return nil }
-        return clubs.first { $0.clubID == id }?.clubName
+        let abbreviation = clubAbbreviations[id]?.trimmingCharacters(in: .whitespaces)
+        return abbreviation.flatMap { $0.isEmpty ? nil : $0 } ?? clubs.first { $0.clubID == id }?.clubName
     }
 
     // MARK: Status

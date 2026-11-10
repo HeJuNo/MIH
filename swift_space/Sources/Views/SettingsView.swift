@@ -348,7 +348,7 @@ private struct ClubSummaryRow: View {
     var body: some View {
         HStack(spacing: 12) {
             ClubLogoView(image: state.clubLogos[club.id]).frame(width: 26, height: 26)
-            Text(club.clubName ?? club.id).font(.subheadline)
+            Text(state.clubName(club.id) ?? club.id).font(.subheadline)
             Spacer()
             let count = state.entries.filter { $0.clubID == club.id }.count
             Text(count == 1 ? "1 Termin" : "\(count) Termine").font(.caption).foregroundStyle(.secondary)
